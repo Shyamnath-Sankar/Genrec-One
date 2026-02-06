@@ -1,6 +1,8 @@
-# HRMS - Human Resource Management System
+# Genrec-One HRMS
 
 A comprehensive Human Resource Management System built with modern technologies including Next.js (Frontend) and FastAPI (Backend).
+
+**Made by GenrecAI Team** | [genrecai.com](https://genrecai.com)
 
 ## 🚀 Quick Start
 
@@ -296,4 +298,4 @@ For support, please open an issue in the repository or contact the development t
 
 ---
 
-**Built with ❤️ using Next.js, FastAPI, and SQLAlchemy**
+**Genrec-One HRMS** - Made by [GenrecAI Team](https://genrecai.com)

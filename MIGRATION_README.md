@@ -559,4 +559,4 @@ If you encounter issues not covered in this guide:
 
 **Version**: 1.0.0  
 **Last Updated**: 2024  
-**Maintained by**: HRMS Development Team
+**Maintained by**: [GenrecAI Team](https://genrecai.com)
