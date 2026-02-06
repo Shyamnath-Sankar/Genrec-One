@@ -27,6 +27,34 @@ from app.schemas.auth import DataResponse, PaginatedResponse
 router = APIRouter(prefix="/employees", tags=["Employees"])
 
 
+@router.get("/without-user", response_model=DataResponse)
+async def get_employees_without_user(
+    current_employee: Employee = Depends(get_current_employee),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get employees that don't have a user account yet"""
+    result = await db.execute(
+        select(Employee)
+        .where(Employee.company_id == current_employee.company_id)
+        .where(Employee.user_id == None)
+        .order_by(Employee.first_name)
+    )
+    employees = result.scalars().all()
+
+    data = [
+        {
+            "id": e.id,
+            "firstName": e.first_name,
+            "lastName": e.last_name,
+            "email": e.work_email or f"{e.first_name.lower()}.{e.last_name.lower()}@company.com",
+            "hasUser": False,
+        }
+        for e in employees
+    ]
+
+    return DataResponse(data=data)
+
+
 @router.get("", response_model=PaginatedResponse)
 async def list_employees(
     page: int = Query(1, ge=1),

@@ -20,7 +20,7 @@ import {
   File,
   FileSpreadsheet,
   FileImage,
-  FilePdf,
+  FileType2,
 } from 'lucide-react'
 import { format } from 'date-fns'
 
@@ -81,7 +81,7 @@ export default function CompanyDocumentsPage() {
   }
 
   const getFileIcon = (fileType: string) => {
-    if (fileType.includes('pdf')) return <FilePdf className="h-5 w-5 text-red-500" />
+    if (fileType.includes('pdf')) return <FileType2 className="h-5 w-5 text-red-500" />
     if (fileType.includes('sheet') || fileType.includes('excel'))
       return <FileSpreadsheet className="h-5 w-5 text-green-500" />
     if (fileType.includes('image')) return <FileImage className="h-5 w-5 text-blue-500" />

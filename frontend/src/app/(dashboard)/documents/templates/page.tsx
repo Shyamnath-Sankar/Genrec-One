@@ -16,7 +16,7 @@ import {
   Download,
   Eye,
   Copy,
-  FileTemplate,
+  Files,
   File,
 } from 'lucide-react'
 import { format } from 'date-fns'
@@ -172,7 +172,7 @@ export default function DocumentTemplatesPage() {
         ) : filteredTemplates.length === 0 ? (
           <Card>
             <CardContent className="flex flex-col items-center justify-center py-12">
-              <FileTemplate className="h-12 w-12 text-muted-foreground mb-4" />
+              <Files className="h-12 w-12 text-muted-foreground mb-4" />
               <p className="text-lg font-medium">No templates found</p>
               <p className="text-sm text-muted-foreground">
                 {searchQuery || categoryFilter !== 'all'

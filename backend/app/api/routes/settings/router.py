@@ -17,6 +17,13 @@ from app.schemas.auth import DataResponse, PaginatedResponse
 from pydantic import BaseModel, Field, EmailStr
 
 
+class UserCreate(BaseModel):
+    email: EmailStr
+    password: str = Field(..., min_length=8)
+    employeeId: Optional[str] = None
+    roleId: Optional[str] = None
+
+
 class CompanyUpdate(BaseModel):
     name: Optional[str] = None
     logo: Optional[str] = None
@@ -319,6 +326,49 @@ async def reset_user_password(
     await db.commit()
 
     return DataResponse(message="Password reset to default. User must change on next login.")
+
+
+@router.post("/users", response_model=DataResponse)
+async def create_user(
+    data: UserCreate,
+    current_employee: Employee = Depends(get_current_employee),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a new user"""
+    # Check if email already exists
+    existing = await db.execute(
+        select(User).where(User.email == data.email)
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="Email already exists")
+
+    # Create user
+    user = User(
+        id=str(uuid.uuid4()),
+        email=data.email,
+        password_hash=get_password_hash(data.password),
+        is_active=True,
+        must_change_password=True,
+    )
+    db.add(user)
+
+    # Link to employee if provided
+    if data.employeeId:
+        emp_result = await db.execute(
+            select(Employee).where(Employee.id == data.employeeId)
+        )
+        employee = emp_result.scalar_one_or_none()
+        if employee:
+            employee.user_id = user.id
+            if data.roleId:
+                employee.role_id = data.roleId
+
+    await db.commit()
+
+    return DataResponse(
+        message="User created successfully",
+        data={"id": user.id},
+    )
 
 
 @router.get("/policies", response_model=DataResponse)

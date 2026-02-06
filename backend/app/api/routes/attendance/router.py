@@ -146,6 +146,30 @@ async def check_out(
     )
 
 
+@router.get("/status", response_model=DataResponse)
+async def get_attendance_status(
+    current_employee: Employee = Depends(get_current_employee),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get current check-in status for header display"""
+    today = date.today()
+    
+    result = await db.execute(
+        select(Attendance)
+        .where(Attendance.employee_id == current_employee.id)
+        .where(Attendance.date == today)
+    )
+    attendance = result.scalar_one_or_none()
+
+    is_checked_in = bool(attendance and attendance.check_in_time and not attendance.check_out_time)
+    
+    return DataResponse(data={
+        "isCheckedIn": is_checked_in,
+        "checkInTime": attendance.check_in_time.isoformat() if attendance and attendance.check_in_time else None,
+        "checkOutTime": attendance.check_out_time.isoformat() if attendance and attendance.check_out_time else None,
+    })
+
+
 @router.get("/today", response_model=DataResponse)
 async def get_today_attendance(
     current_employee: Employee = Depends(get_current_employee),

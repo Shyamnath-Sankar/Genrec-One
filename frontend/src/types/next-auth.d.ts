@@ -51,6 +51,7 @@ declare module 'next-auth' {
       email: string
       mustChangePassword: boolean
       employee: EmployeeData | null
+      accessToken?: string
     } & DefaultSession['user']
   }
 
@@ -59,6 +60,7 @@ declare module 'next-auth' {
     email: string
     mustChangePassword: boolean
     employee: EmployeeData | null
+    accessToken?: string
   }
 }
 
@@ -68,5 +70,6 @@ declare module 'next-auth/jwt' {
     email: string
     mustChangePassword: boolean
     employee: EmployeeData | null
+    accessToken?: string
   }
 }

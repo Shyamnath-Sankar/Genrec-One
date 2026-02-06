@@ -1,13 +1,15 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/lib/hooks/use-auth'
+import { apiClient } from '@/lib/api/client'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { Badge } from '@/components/ui/badge'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -17,7 +19,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   LayoutDashboard,
   Users,
@@ -37,16 +38,21 @@ import {
   ChevronDown,
   LogOut,
   User,
-  Building2,
   Sun,
   Moon,
   Heart,
   TrendingUp,
   CheckSquare,
   Timer,
+  LogIn,
+  LogOutIcon,
+  Loader2,
+  Building2,
 } from 'lucide-react'
 import { PERMISSIONS, Permission } from '@/lib/constants'
 import { useTheme } from 'next-themes'
+import { toast } from 'sonner'
+import { format } from 'date-fns'
 
 type NavItem = {
   title: string
@@ -56,18 +62,10 @@ type NavItem = {
   children?: { title: string; href: string; permission?: Permission }[]
 }
 
+// Clean navigation - no duplicate tab items, just direct links to pages
 const navigation: NavItem[] = [
   { title: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-  {
-    title: 'Approvals',
-    href: '/approvals',
-    icon: CheckSquare,
-    children: [
-      { title: 'Pending', href: '/approvals' },
-      { title: 'My Requests', href: '/approvals?tab=my-requests' },
-      { title: 'History', href: '/approvals?tab=history' },
-    ]
-  },
+  { title: 'Approvals', href: '/approvals', icon: CheckSquare },
   { 
     title: 'Employees', 
     href: '/employees', 
@@ -201,49 +199,10 @@ const navigation: NavItem[] = [
       { title: 'Templates', href: '/documents/templates', permission: PERMISSIONS.DOCUMENTS_MANAGE },
     ]
   },
-  { 
-    title: 'Reports', 
-    href: '/reports', 
-    icon: BarChart3,
-    permission: PERMISSIONS.REPORTS_VIEW,
-    children: [
-      { title: 'Attendance', href: '/reports/attendance' },
-      { title: 'Leave', href: '/reports/leave' },
-      { title: 'Payroll', href: '/reports/payroll' },
-      { title: 'Headcount', href: '/reports/headcount' },
-    ]
-  },
-  {
-    title: 'Analytics',
-    href: '/analytics',
-    icon: TrendingUp,
-    children: [
-      { title: 'Workforce', href: '/analytics' },
-      { title: 'Attendance', href: '/analytics?tab=attendance' },
-      { title: 'Attrition', href: '/analytics?tab=attrition' },
-      { title: 'Performance', href: '/analytics?tab=performance' },
-    ]
-  },
-  {
-    title: 'Engagement',
-    href: '/engagement',
-    icon: Heart,
-    children: [
-      { title: 'Social Feed', href: '/engagement' },
-      { title: 'Recognitions', href: '/engagement?tab=recognitions' },
-      { title: 'Surveys', href: '/engagement?tab=surveys' },
-    ]
-  },
-  {
-    title: 'Shifts',
-    href: '/shifts',
-    icon: Timer,
-    children: [
-      { title: 'My Shift', href: '/shifts' },
-      { title: 'All Shifts', href: '/shifts?tab=all-shifts' },
-      { title: 'Roster', href: '/shifts?tab=roster' },
-    ]
-  },
+  { title: 'Reports', href: '/reports', icon: BarChart3, permission: PERMISSIONS.REPORTS_VIEW },
+  { title: 'Analytics', href: '/analytics', icon: TrendingUp },
+  { title: 'Engagement', href: '/engagement', icon: Heart },
+  { title: 'Shifts', href: '/shifts', icon: Timer },
   { 
     title: 'Settings', 
     href: '/settings', 
@@ -259,20 +218,27 @@ const navigation: NavItem[] = [
   },
 ]
 
-function NavItemComponent({ item, isCollapsed }: { item: NavItem; isCollapsed: boolean }) {
+function NavItemComponent({ 
+  item, 
+  expandedItems,
+  onToggle 
+}: { 
+  item: NavItem
+  expandedItems: Set<string>
+  onToggle: (href: string) => void
+}) {
   const pathname = usePathname()
-  const [isOpen, setIsOpen] = useState(false)
   const { hasPermission } = useAuth()
 
-  // Check if user has permission for this item
   if (item.permission && !hasPermission(item.permission)) {
     return null
   }
 
   const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
+  const isExpanded = expandedItems.has(item.href)
   const Icon = item.icon
 
-  if (item.children && !isCollapsed) {
+  if (item.children) {
     const visibleChildren = item.children.filter(
       (child) => !child.permission || hasPermission(child.permission)
     )
@@ -282,7 +248,7 @@ function NavItemComponent({ item, isCollapsed }: { item: NavItem; isCollapsed: b
     return (
       <div className="space-y-1">
         <button
-          onClick={() => setIsOpen(!isOpen)}
+          onClick={() => onToggle(item.href)}
           className={cn(
             'flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm font-medium transition-colors',
             isActive
@@ -291,12 +257,12 @@ function NavItemComponent({ item, isCollapsed }: { item: NavItem; isCollapsed: b
           )}
         >
           <span className="flex items-center gap-3">
-            <Icon className="h-4 w-4" />
-            {item.title}
+            <Icon className="h-4 w-4 flex-shrink-0" />
+            <span className="truncate">{item.title}</span>
           </span>
-          <ChevronDown className={cn('h-4 w-4 transition-transform', isOpen && 'rotate-180')} />
+          <ChevronDown className={cn('h-4 w-4 flex-shrink-0 transition-transform', isExpanded && 'rotate-180')} />
         </button>
-        {isOpen && (
+        {isExpanded && (
           <div className="ml-6 space-y-1 border-l pl-3">
             {visibleChildren.map((child) => (
               <Link
@@ -328,33 +294,83 @@ function NavItemComponent({ item, isCollapsed }: { item: NavItem; isCollapsed: b
           : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
       )}
     >
-      <Icon className="h-4 w-4" />
-      {!isCollapsed && item.title}
+      <Icon className="h-4 w-4 flex-shrink-0" />
+      <span className="truncate">{item.title}</span>
     </Link>
   )
 }
 
 export function Sidebar({ className }: { className?: string }) {
   const { employee } = useAuth()
+  const pathname = usePathname()
+  const [companyName, setCompanyName] = useState<string>('Company')
+  
+  const [expandedItems, setExpandedItems] = useState<Set<string>>(() => {
+    const initial = new Set<string>()
+    navigation.forEach((item) => {
+      if (item.children && (pathname === item.href || pathname.startsWith(item.href + '/'))) {
+        initial.add(item.href)
+      }
+    })
+    return initial
+  })
+
+  useEffect(() => {
+    const fetchCompany = async () => {
+      try {
+        const data = await apiClient.get<{ name: string }>('/settings/company')
+        if (data?.name) {
+          setCompanyName(data.name)
+        }
+      } catch (error) {
+        // Silently fail
+      }
+    }
+    fetchCompany()
+  }, [])
+
+  const handleToggle = (href: string) => {
+    setExpandedItems((prev) => {
+      const next = new Set(prev)
+      if (next.has(href)) {
+        next.delete(href)
+      } else {
+        next.add(href)
+      }
+      return next
+    })
+  }
 
   return (
     <div className={cn('flex h-full flex-col border-r bg-card', className)}>
+      {/* Company Name Header */}
       <div className="flex h-14 items-center border-b px-4">
-        <Link href="/dashboard" className="flex items-center gap-2 font-semibold">
-          <Building2 className="h-6 w-6 text-primary" />
-          <span>HRMS</span>
+        <Link href="/dashboard" className="flex items-center gap-2">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+            <Building2 className="h-4 w-4" />
+          </div>
+          <span className="font-semibold truncate">{companyName}</span>
         </Link>
       </div>
-      <ScrollArea className="flex-1 px-3 py-4">
-        <nav className="space-y-1">
+      
+      {/* Scrollable Navigation */}
+      <div className="flex-1 overflow-y-auto">
+        <nav className="space-y-1 p-3">
           {navigation.map((item) => (
-            <NavItemComponent key={item.href} item={item} isCollapsed={false} />
+            <NavItemComponent 
+              key={item.href} 
+              item={item} 
+              expandedItems={expandedItems}
+              onToggle={handleToggle}
+            />
           ))}
         </nav>
-      </ScrollArea>
+      </div>
+      
+      {/* User Info Footer */}
       <div className="border-t p-4">
         <div className="flex items-center gap-3">
-          <Avatar className="h-9 w-9">
+          <Avatar className="h-9 w-9 flex-shrink-0">
             <AvatarImage src={employee?.photo || undefined} />
             <AvatarFallback>
               {employee ? `${employee.firstName[0]}${employee.lastName[0]}` : 'U'}
@@ -365,7 +381,7 @@ export function Sidebar({ className }: { className?: string }) {
               {employee ? `${employee.firstName} ${employee.lastName}` : 'User'}
             </p>
             <p className="truncate text-xs text-muted-foreground">
-              {employee?.role.name || 'Role'}
+              {employee?.role?.name || 'Role'}
             </p>
           </div>
         </div>
@@ -377,13 +393,68 @@ export function Sidebar({ className }: { className?: string }) {
 export function Header() {
   const { employee, logout } = useAuth()
   const { theme, setTheme } = useTheme()
+  const [isCheckedIn, setIsCheckedIn] = useState(false)
+  const [checkInTime, setCheckInTime] = useState<string | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
+  const [currentTime, setCurrentTime] = useState(new Date())
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(new Date())
+    }, 60000)
+    return () => clearInterval(timer)
+  }, [])
+
+  useEffect(() => {
+    const fetchAttendanceStatus = async () => {
+      try {
+        const data = await apiClient.get<{ 
+          isCheckedIn: boolean
+          checkInTime: string | null 
+        }>('/attendance/status')
+        setIsCheckedIn(data.isCheckedIn)
+        setCheckInTime(data.checkInTime)
+      } catch (error) {
+        // Silently fail
+      }
+    }
+    fetchAttendanceStatus()
+  }, [])
 
   const toggleTheme = () => {
     setTheme(theme === 'dark' ? 'light' : 'dark')
   }
 
+  const handleCheckIn = async () => {
+    setIsLoading(true)
+    try {
+      await apiClient.post('/attendance/check-in', {})
+      setIsCheckedIn(true)
+      setCheckInTime(new Date().toISOString())
+      toast.success('Checked in successfully!')
+    } catch (error) {
+      toast.error('Failed to check in')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleCheckOut = async () => {
+    setIsLoading(true)
+    try {
+      await apiClient.post('/attendance/check-out', {})
+      setIsCheckedIn(false)
+      toast.success('Checked out successfully!')
+    } catch (error) {
+      toast.error('Failed to check out')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   return (
     <header className="sticky top-0 z-50 flex h-14 items-center gap-4 border-b bg-card px-4 lg:px-6">
+      {/* Mobile Menu */}
       <Sheet>
         <SheetTrigger asChild>
           <Button variant="ghost" size="icon" className="lg:hidden">
@@ -395,54 +466,116 @@ export function Header() {
         </SheetContent>
       </Sheet>
 
-      <div className="flex-1" />
+      {/* Left - Date/Time (hidden on mobile) */}
+      <div className="hidden md:flex items-center gap-2 text-sm text-muted-foreground">
+        <Clock className="h-4 w-4" />
+        <span>{format(currentTime, 'EEE, MMM d')}</span>
+        <span className="font-medium text-foreground">{format(currentTime, 'h:mm a')}</span>
+      </div>
 
-      <Button variant="ghost" size="icon" onClick={toggleTheme} className="mr-2">
-        <Sun className="h-5 w-5 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-        <Moon className="absolute h-5 w-5 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
-        <span className="sr-only">Toggle theme</span>
-      </Button>
+      {/* Center - Genrec One Branding */}
+      <div className="flex-1 flex justify-center">
+        <Link href="/dashboard" className="flex items-center gap-2">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground text-sm font-bold">
+            G1
+          </div>
+          <span className="font-bold text-lg hidden sm:inline">Genrec One</span>
+        </Link>
+      </div>
 
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="ghost" className="relative h-9 w-9 rounded-full">
-            <Avatar className="h-9 w-9">
-              <AvatarImage src={employee?.photo || undefined} />
-              <AvatarFallback>
-                {employee ? `${employee.firstName[0]}${employee.lastName[0]}` : 'U'}
-              </AvatarFallback>
-            </Avatar>
+      {/* Right - Actions */}
+      <div className="flex items-center gap-2">
+        {/* Check In / Check Out Button */}
+        {isCheckedIn ? (
+          <div className="flex items-center gap-2">
+            <Badge variant="secondary" className="hidden sm:flex items-center gap-1 bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">
+              <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+              <span className="hidden md:inline">In since</span> {checkInTime ? format(new Date(checkInTime), 'h:mm a') : '--:--'}
+            </Badge>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={handleCheckOut}
+              disabled={isLoading}
+              className="text-red-600 border-red-200 hover:bg-red-50 dark:border-red-800 dark:hover:bg-red-900"
+            >
+              {isLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <>
+                  <LogOutIcon className="mr-1 h-4 w-4 sm:mr-2" />
+                  <span className="hidden sm:inline">Check Out</span>
+                </>
+              )}
+            </Button>
+          </div>
+        ) : (
+          <Button 
+            variant="default" 
+            size="sm" 
+            onClick={handleCheckIn}
+            disabled={isLoading}
+          >
+            {isLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <>
+                <LogIn className="mr-1 h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">Check In</span>
+              </>
+            )}
           </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent className="w-56" align="end">
-          <DropdownMenuLabel>
-            <div className="flex flex-col space-y-1">
-              <p className="text-sm font-medium">
-                {employee ? `${employee.firstName} ${employee.lastName}` : 'User'}
-              </p>
-              <p className="text-xs text-muted-foreground">{employee?.role.name}</p>
-            </div>
-          </DropdownMenuLabel>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem asChild>
-            <Link href="/profile">
-              <User className="mr-2 h-4 w-4" />
-              Profile
-            </Link>
-          </DropdownMenuItem>
-          <DropdownMenuItem asChild>
-            <Link href="/settings">
-              <Settings className="mr-2 h-4 w-4" />
-              Settings
-            </Link>
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={() => logout()}>
-            <LogOut className="mr-2 h-4 w-4" />
-            Log out
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+        )}
+
+        {/* Theme Toggle */}
+        <Button variant="ghost" size="icon" onClick={toggleTheme}>
+          <Sun className="h-5 w-5 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
+          <Moon className="absolute h-5 w-5 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+          <span className="sr-only">Toggle theme</span>
+        </Button>
+
+        {/* User Menu */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" className="relative h-9 w-9 rounded-full">
+              <Avatar className="h-9 w-9">
+                <AvatarImage src={employee?.photo || undefined} />
+                <AvatarFallback>
+                  {employee ? `${employee.firstName[0]}${employee.lastName[0]}` : 'U'}
+                </AvatarFallback>
+              </Avatar>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent className="w-56" align="end">
+            <DropdownMenuLabel>
+              <div className="flex flex-col space-y-1">
+                <p className="text-sm font-medium">
+                  {employee ? `${employee.firstName} ${employee.lastName}` : 'User'}
+                </p>
+                <p className="text-xs text-muted-foreground">{employee?.role?.name}</p>
+              </div>
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem asChild>
+              <Link href="/profile">
+                <User className="mr-2 h-4 w-4" />
+                Profile
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link href="/settings">
+                <Settings className="mr-2 h-4 w-4" />
+                Settings
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => logout()}>
+              <LogOut className="mr-2 h-4 w-4" />
+              Log out
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
     </header>
   )
 }
@@ -450,10 +583,12 @@ export function Header() {
 export function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen">
-      <aside className="hidden w-64 lg:block">
-        <Sidebar />
+      {/* Fixed Sidebar */}
+      <aside className="hidden w-64 lg:block fixed inset-y-0 left-0 z-40 overflow-hidden">
+        <Sidebar className="h-screen" />
       </aside>
-      <div className="flex flex-1 flex-col">
+      {/* Main content */}
+      <div className="flex flex-1 flex-col lg:ml-64">
         <Header />
         <main className="flex-1 overflow-auto p-4 lg:p-6">{children}</main>
       </div>

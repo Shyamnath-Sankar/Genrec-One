@@ -503,7 +503,7 @@ export default function EmployeeDetailPage() {
                   </div>
                 </div>
 
-                {hasPermission('payroll.view', 'view') && (
+                {hasPermission('payroll.view_all', 'read') && (
                   <>
                     <Separator className="my-6" />
 

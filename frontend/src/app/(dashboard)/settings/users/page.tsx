@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import {
   Table,
   TableBody,
@@ -18,33 +19,73 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Users, Plus, Search, MoreHorizontal, Shield, Mail } from 'lucide-react'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { Users, Plus, Search, MoreHorizontal, Shield, Mail, Loader2, KeyRound, UserX, UserCheck } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { toast } from 'sonner'
 
 type User = {
   id: string
   email: string
-  isActive: boolean
-  mustChangePassword: boolean
-  lastLogin: string | null
-  employee?: {
-    firstName: string
-    lastName: string
-    role: { name: string }
-  }
+  is_active: boolean
+  must_change_password: boolean
+  last_login: string | null
+  employee_name: string | null
+  role: string | null
+}
+
+type Role = {
+  id: string
+  name: string
+  description: string | null
+}
+
+type Employee = {
+  id: string
+  firstName: string
+  lastName: string
+  email: string
+  hasUser: boolean
 }
 
 export default function UsersPage() {
   const router = useRouter()
   const { isLoading: authLoading, isAuthenticated, isSuperAdmin } = useAuth()
   const [users, setUsers] = useState<User[]>([])
+  const [roles, setRoles] = useState<Role[]>([])
+  const [employees, setEmployees] = useState<Employee[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [search, setSearch] = useState('')
+  const [isDialogOpen, setIsDialogOpen] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const [formData, setFormData] = useState({
+    email: '',
+    password: '',
+    employeeId: '',
+    roleId: '',
+  })
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -53,27 +94,71 @@ export default function UsersPage() {
     }
 
     if (isAuthenticated) {
-      fetchUsers()
+      fetchData()
     }
   }, [authLoading, isAuthenticated, router])
 
-  const fetchUsers = async () => {
+  const fetchData = async () => {
     try {
       setIsLoading(true)
-      const data = await apiClient.get<User[]>('/settings/users')
-      setUsers(Array.isArray(data) ? data : [])
+      const [usersResult, rolesData, employeesData] = await Promise.all([
+        apiClient.getPaginated<User>('/settings/users'),
+        apiClient.get<Role[]>('/settings/roles'),
+        apiClient.get<Employee[]>('/employees/without-user'),
+      ])
+      setUsers(usersResult.data || [])
+      setRoles(Array.isArray(rolesData) ? rolesData : [])
+      setEmployees(Array.isArray(employeesData) ? employeesData : [])
     } catch (error) {
-      console.error('Failed to fetch users:', error)
+      console.error('Failed to fetch data:', error)
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  const handleCreateUser = async () => {
+    if (!formData.email || !formData.password) {
+      toast.error('Email and password are required')
+      return
+    }
+
+    setIsSubmitting(true)
+    try {
+      await apiClient.post('/settings/users', formData)
+      toast.success('User created successfully')
+      setIsDialogOpen(false)
+      setFormData({ email: '', password: '', employeeId: '', roleId: '' })
+      fetchData()
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to create user')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleToggleStatus = async (userId: string, currentStatus: boolean) => {
+    try {
+      await apiClient.put(`/settings/users/${userId}/toggle-active`, {})
+      toast.success(`User ${currentStatus ? 'deactivated' : 'activated'} successfully`)
+      fetchData()
+    } catch (error) {
+      toast.error('Failed to update user status')
+    }
+  }
+
+  const handleResetPassword = async (userId: string) => {
+    try {
+      await apiClient.post(`/settings/users/${userId}/reset-password`, {})
+      toast.success('Password reset to default. User must change on next login.')
+    } catch (error) {
+      toast.error('Failed to reset password')
     }
   }
 
   const filteredUsers = users.filter(
     (user) =>
       user.email.toLowerCase().includes(search.toLowerCase()) ||
-      user.employee?.firstName.toLowerCase().includes(search.toLowerCase()) ||
-      user.employee?.lastName.toLowerCase().includes(search.toLowerCase())
+      user.employee_name?.toLowerCase().includes(search.toLowerCase())
   )
 
   if (authLoading) {
@@ -96,11 +181,126 @@ export default function UsersPage() {
             <p className="text-muted-foreground">Manage system users and access</p>
           </div>
           {isSuperAdmin && (
-            <Button>
-              <Plus className="mr-2 h-4 w-4" />
-              Add User
-            </Button>
+            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+              <DialogTrigger asChild>
+                <Button>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add User
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Create New User</DialogTitle>
+                  <DialogDescription>
+                    Create a new user account. The user can be linked to an existing employee.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="email">Email *</Label>
+                    <Input
+                      id="email"
+                      type="email"
+                      placeholder="user@company.com"
+                      value={formData.email}
+                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="password">Password *</Label>
+                    <Input
+                      id="password"
+                      type="password"
+                      placeholder="Enter password"
+                      value={formData.password}
+                      onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Minimum 8 characters. User will be required to change on first login.
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="employee">Link to Employee (Optional)</Label>
+                    <Select
+                      value={formData.employeeId || "none"}
+                      onValueChange={(value) => setFormData({ ...formData, employeeId: value === "none" ? "" : value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select employee" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">No employee link</SelectItem>
+                        {employees.map((emp) => (
+                          <SelectItem key={emp.id} value={emp.id}>
+                            {emp.firstName} {emp.lastName} ({emp.email})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="role">Role (Optional)</Label>
+                    <Select
+                      value={formData.roleId || "none"}
+                      onValueChange={(value) => setFormData({ ...formData, roleId: value === "none" ? "" : value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select role" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">No role</SelectItem>
+                        {roles.map((role) => (
+                          <SelectItem key={role.id} value={role.id}>
+                            {role.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button onClick={handleCreateUser} disabled={isSubmitting}>
+                    {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Create User
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           )}
+        </div>
+
+        {/* Stats */}
+        <div className="grid gap-4 md:grid-cols-3">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium">Total Users</CardTitle>
+              <Users className="h-4 w-4 text-blue-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{users.length}</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium">Active</CardTitle>
+              <UserCheck className="h-4 w-4 text-green-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{users.filter((u) => u.is_active).length}</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium">Inactive</CardTitle>
+              <UserX className="h-4 w-4 text-red-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{users.filter((u) => !u.is_active).length}</div>
+            </CardContent>
+          </Card>
         </div>
 
         <Card>
@@ -109,7 +309,7 @@ export default function UsersPage() {
               <div>
                 <CardTitle>All Users</CardTitle>
                 <CardDescription>
-                  {users.length} users in the system
+                  {filteredUsers.length} users found
                 </CardDescription>
               </div>
               <div className="relative w-64">
@@ -159,9 +359,7 @@ export default function UsersPage() {
                           </div>
                           <div>
                             <p className="font-medium">
-                              {user.employee
-                                ? `${user.employee.firstName} ${user.employee.lastName}`
-                                : 'No Profile'}
+                              {user.employee_name || 'No Profile'}
                             </p>
                             <p className="text-sm text-muted-foreground">{user.email}</p>
                           </div>
@@ -170,23 +368,23 @@ export default function UsersPage() {
                       <TableCell>
                         <div className="flex items-center gap-2">
                           <Shield className="h-4 w-4 text-muted-foreground" />
-                          {user.employee?.role?.name || 'No Role'}
+                          {user.role || 'No Role'}
                         </div>
                       </TableCell>
                       <TableCell>
                         <Badge
                           className={
-                            user.isActive
+                            user.is_active
                               ? 'bg-green-100 text-green-800'
                               : 'bg-red-100 text-red-800'
                           }
                         >
-                          {user.isActive ? 'Active' : 'Inactive'}
+                          {user.is_active ? 'Active' : 'Inactive'}
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        {user.lastLogin
-                          ? new Date(user.lastLogin).toLocaleDateString()
+                        {user.last_login
+                          ? new Date(user.last_login).toLocaleDateString()
                           : 'Never'}
                       </TableCell>
                       <TableCell>
@@ -197,10 +395,26 @@ export default function UsersPage() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem>Edit</DropdownMenuItem>
-                            <DropdownMenuItem>Reset Password</DropdownMenuItem>
-                            <DropdownMenuItem className="text-red-600">
-                              {user.isActive ? 'Deactivate' : 'Activate'}
+                            <DropdownMenuItem onClick={() => handleResetPassword(user.id)}>
+                              <KeyRound className="mr-2 h-4 w-4" />
+                              Reset Password
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              onClick={() => handleToggleStatus(user.id, user.is_active)}
+                              className={user.is_active ? 'text-red-600' : 'text-green-600'}
+                            >
+                              {user.is_active ? (
+                                <>
+                                  <UserX className="mr-2 h-4 w-4" />
+                                  Deactivate
+                                </>
+                              ) : (
+                                <>
+                                  <UserCheck className="mr-2 h-4 w-4" />
+                                  Activate
+                                </>
+                              )}
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>

@@ -8,7 +8,27 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Skeleton } from '@/components/ui/skeleton'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { apiClient } from '@/lib/api/client'
+import { toast } from 'sonner'
 import {
   Heart,
   MessageCircle,
@@ -21,6 +41,10 @@ import {
   ThumbsUp,
   Cake,
   Calendar,
+  Plus,
+  ClipboardList,
+  Loader2,
+  BarChart3,
 } from 'lucide-react'
 
 type Post = {
@@ -49,18 +73,65 @@ type Recognition = {
   createdAt: string
 }
 
+type Survey = {
+  id: string
+  title: string
+  description: string
+  status: string
+  responseCount: number
+  totalQuestions: number
+  dueDate: string | null
+  createdAt: string
+}
+
 type Celebration = {
   birthdays: Array<{ id: string; name: string; photo: string | null; department: string | null }>
   workAnniversaries: Array<{ id: string; name: string; photo: string | null; department: string | null; years: number }>
+}
+
+type Employee = {
+  id: string
+  firstName: string
+  lastName: string
+  photo: string | null
+}
+
+type RecognitionBadge = {
+  id: string
+  name: string
+  icon: string
+  color: string
 }
 
 export default function EngagementPage() {
   const [activeTab, setActiveTab] = useState('feed')
   const [posts, setPosts] = useState<Post[]>([])
   const [recognitions, setRecognitions] = useState<Recognition[]>([])
+  const [surveys, setSurveys] = useState<Survey[]>([])
   const [celebrations, setCelebrations] = useState<Celebration | null>(null)
+  const [employees, setEmployees] = useState<Employee[]>([])
+  const [badges, setBadges] = useState<RecognitionBadge[]>([])
   const [newPost, setNewPost] = useState('')
   const [isLoading, setIsLoading] = useState(true)
+  
+  // Dialog states
+  const [isRecognitionDialogOpen, setIsRecognitionDialogOpen] = useState(false)
+  const [isSurveyDialogOpen, setIsSurveyDialogOpen] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  // Recognition form
+  const [recognitionForm, setRecognitionForm] = useState({
+    receiverId: '',
+    badgeId: '',
+    message: '',
+  })
+
+  // Survey form
+  const [surveyForm, setSurveyForm] = useState({
+    title: '',
+    description: '',
+    dueDate: '',
+  })
 
   useEffect(() => {
     fetchData()
@@ -68,14 +139,21 @@ export default function EngagementPage() {
 
   const fetchData = async () => {
     try {
-      const [feedRes, recognitionsRes, celebrationsRes] = await Promise.all([
-        apiClient.get<{ data: Post[] }>('/engagement/feed'),
-        apiClient.get<{ data: Recognition[] }>('/engagement/recognitions'),
-        apiClient.get<{ data: Celebration }>('/engagement/celebrations/today'),
+      setIsLoading(true)
+      const [feedRes, recognitionsRes, surveysRes, celebrationsRes, employeesRes, badgesRes] = await Promise.all([
+        apiClient.get<Post[]>('/engagement/feed').catch(() => []),
+        apiClient.get<Recognition[]>('/engagement/recognitions').catch(() => []),
+        apiClient.get<Survey[]>('/engagement/surveys').catch(() => []),
+        apiClient.get<Celebration>('/engagement/celebrations/today').catch(() => null),
+        apiClient.get<Employee[]>('/employees/list').catch(() => []),
+        apiClient.get<RecognitionBadge[]>('/engagement/badges').catch(() => []),
       ])
-      setPosts((feedRes as { data: Post[] }).data || [])
-      setRecognitions((recognitionsRes as { data: Recognition[] }).data || [])
-      setCelebrations((celebrationsRes as { data: Celebration }).data || null)
+      setPosts(Array.isArray(feedRes) ? feedRes : [])
+      setRecognitions(Array.isArray(recognitionsRes) ? recognitionsRes : [])
+      setSurveys(Array.isArray(surveysRes) ? surveysRes : [])
+      setCelebrations(celebrationsRes)
+      setEmployees(Array.isArray(employeesRes) ? employeesRes : [])
+      setBadges(Array.isArray(badgesRes) ? badgesRes : [])
     } catch (error) {
       console.error('Failed to fetch engagement data:', error)
     } finally {
@@ -88,9 +166,10 @@ export default function EngagementPage() {
     try {
       await apiClient.post('/engagement/posts', { content: newPost, postType: 'update' })
       setNewPost('')
+      toast.success('Post shared successfully!')
       fetchData()
     } catch (error) {
-      console.error('Failed to create post:', error)
+      toast.error('Failed to create post')
     }
   }
 
@@ -100,6 +179,46 @@ export default function EngagementPage() {
       fetchData()
     } catch (error) {
       console.error('Failed to like post:', error)
+    }
+  }
+
+  const handleGiveRecognition = async () => {
+    if (!recognitionForm.receiverId || !recognitionForm.message) {
+      toast.error('Please select an employee and write a message')
+      return
+    }
+
+    setIsSubmitting(true)
+    try {
+      await apiClient.post('/engagement/recognitions', recognitionForm)
+      toast.success('Recognition sent successfully!')
+      setIsRecognitionDialogOpen(false)
+      setRecognitionForm({ receiverId: '', badgeId: '', message: '' })
+      fetchData()
+    } catch (error) {
+      toast.error('Failed to send recognition')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleCreateSurvey = async () => {
+    if (!surveyForm.title) {
+      toast.error('Please enter a survey title')
+      return
+    }
+
+    setIsSubmitting(true)
+    try {
+      await apiClient.post('/engagement/surveys', surveyForm)
+      toast.success('Survey created successfully!')
+      setIsSurveyDialogOpen(false)
+      setSurveyForm({ title: '', description: '', dueDate: '' })
+      fetchData()
+    } catch (error) {
+      toast.error('Failed to create survey')
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -115,12 +234,43 @@ export default function EngagementPage() {
     return date.toLocaleDateString()
   }
 
+  const getSurveyStatusBadge = (status: string) => {
+    switch (status) {
+      case 'ACTIVE':
+        return <Badge className="bg-green-100 text-green-800">Active</Badge>
+      case 'DRAFT':
+        return <Badge className="bg-gray-100 text-gray-800">Draft</Badge>
+      case 'CLOSED':
+        return <Badge className="bg-red-100 text-red-800">Closed</Badge>
+      default:
+        return <Badge variant="outline">{status}</Badge>
+    }
+  }
+
+  if (isLoading) {
+    return (
+      <DashboardLayout>
+        <div className="space-y-6">
+          <Skeleton className="h-10 w-64" />
+          <div className="grid gap-6 md:grid-cols-3">
+            <Skeleton className="h-48" />
+            <Skeleton className="h-48" />
+            <Skeleton className="h-48" />
+          </div>
+          <Skeleton className="h-96" />
+        </div>
+      </DashboardLayout>
+    )
+  }
+
   return (
     <DashboardLayout>
       <div className="space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Employee Engagement</h1>
-          <p className="text-muted-foreground">Connect, recognize, and celebrate with your team</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Employee Engagement</h1>
+            <p className="text-muted-foreground">Connect, recognize, and celebrate with your team</p>
+          </div>
         </div>
 
         <div className="grid gap-6 md:grid-cols-3">
@@ -188,6 +338,10 @@ export default function EngagementPage() {
                   <span className="text-sm text-muted-foreground">Recognitions given</span>
                   <span className="font-medium">{recognitions.length}</span>
                 </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-muted-foreground">Active surveys</span>
+                  <span className="font-medium">{surveys.filter(s => s.status === 'ACTIVE').length}</span>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -201,14 +355,127 @@ export default function EngagementPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
-              <Button variant="outline" className="w-full justify-start">
-                <Award className="h-4 w-4 mr-2" />
-                Give Recognition
-              </Button>
-              <Button variant="outline" className="w-full justify-start">
-                <Gift className="h-4 w-4 mr-2" />
-                Send Wishes
-              </Button>
+              <Dialog open={isRecognitionDialogOpen} onOpenChange={setIsRecognitionDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button variant="outline" className="w-full justify-start">
+                    <Award className="h-4 w-4 mr-2" />
+                    Give Recognition
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Give Recognition</DialogTitle>
+                    <DialogDescription>Appreciate a colleague for their great work</DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4 py-4">
+                    <div className="space-y-2">
+                      <Label>Select Employee *</Label>
+                      <Select
+                        value={recognitionForm.receiverId}
+                        onValueChange={(value) => setRecognitionForm({...recognitionForm, receiverId: value})}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Choose an employee" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {employees.map((emp) => (
+                            <SelectItem key={emp.id} value={emp.id}>
+                              {emp.firstName} {emp.lastName}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Badge (Optional)</Label>
+                      <Select
+                        value={recognitionForm.badgeId || "none"}
+                        onValueChange={(value) => setRecognitionForm({...recognitionForm, badgeId: value === "none" ? "" : value})}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select a badge" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">No badge</SelectItem>
+                          {badges.map((badge) => (
+                            <SelectItem key={badge.id} value={badge.id}>
+                              <div className="flex items-center gap-2">
+                                <div className="h-3 w-3 rounded-full" style={{backgroundColor: badge.color}} />
+                                {badge.name}
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Message *</Label>
+                      <Textarea
+                        placeholder="Write a message of appreciation..."
+                        value={recognitionForm.message}
+                        onChange={(e) => setRecognitionForm({...recognitionForm, message: e.target.value})}
+                        rows={3}
+                      />
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setIsRecognitionDialogOpen(false)}>Cancel</Button>
+                    <Button onClick={handleGiveRecognition} disabled={isSubmitting}>
+                      {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                      Send Recognition
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+
+              <Dialog open={isSurveyDialogOpen} onOpenChange={setIsSurveyDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button variant="outline" className="w-full justify-start">
+                    <ClipboardList className="h-4 w-4 mr-2" />
+                    Create Survey
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Create Survey</DialogTitle>
+                    <DialogDescription>Create a new employee survey or pulse check</DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4 py-4">
+                    <div className="space-y-2">
+                      <Label>Survey Title *</Label>
+                      <Input
+                        placeholder="e.g., Monthly Pulse Check"
+                        value={surveyForm.title}
+                        onChange={(e) => setSurveyForm({...surveyForm, title: e.target.value})}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Description</Label>
+                      <Textarea
+                        placeholder="What is this survey about?"
+                        value={surveyForm.description}
+                        onChange={(e) => setSurveyForm({...surveyForm, description: e.target.value})}
+                        rows={3}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Due Date (Optional)</Label>
+                      <Input
+                        type="date"
+                        value={surveyForm.dueDate}
+                        onChange={(e) => setSurveyForm({...surveyForm, dueDate: e.target.value})}
+                      />
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setIsSurveyDialogOpen(false)}>Cancel</Button>
+                    <Button onClick={handleCreateSurvey} disabled={isSubmitting}>
+                      {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                      Create Survey
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
             </CardContent>
           </Card>
         </div>
@@ -270,7 +537,7 @@ export default function EngagementPage() {
               </Card>
             ))}
 
-            {posts.length === 0 && !isLoading && (
+            {posts.length === 0 && (
               <Card>
                 <CardContent className="py-8 text-center">
                   <Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
@@ -314,23 +581,67 @@ export default function EngagementPage() {
               </Card>
             ))}
 
-            {recognitions.length === 0 && !isLoading && (
+            {recognitions.length === 0 && (
               <Card>
                 <CardContent className="py-8 text-center">
                   <Award className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                  <p className="text-muted-foreground">No recognitions yet. Start appreciating your colleagues!</p>
+                  <p className="text-lg font-medium">No recognitions yet</p>
+                  <p className="text-sm text-muted-foreground mb-4">Start appreciating your colleagues!</p>
+                  <Button onClick={() => setIsRecognitionDialogOpen(true)}>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Give Recognition
+                  </Button>
                 </CardContent>
               </Card>
             )}
           </TabsContent>
 
           <TabsContent value="surveys" className="space-y-4">
-            <Card>
-              <CardContent className="py-8 text-center">
-                <Calendar className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                <p className="text-muted-foreground">No pending surveys at the moment.</p>
-              </CardContent>
-            </Card>
+            <div className="flex justify-end">
+              <Button onClick={() => setIsSurveyDialogOpen(true)}>
+                <Plus className="mr-2 h-4 w-4" />
+                Create Survey
+              </Button>
+            </div>
+
+            {surveys.map((survey) => (
+              <Card key={survey.id}>
+                <CardContent className="pt-4">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-medium">{survey.title}</h3>
+                        {getSurveyStatusBadge(survey.status)}
+                      </div>
+                      <p className="text-sm text-muted-foreground mt-1">{survey.description}</p>
+                      <div className="flex items-center gap-4 mt-3 text-sm text-muted-foreground">
+                        <span>{survey.totalQuestions} questions</span>
+                        <span>{survey.responseCount} responses</span>
+                        {survey.dueDate && <span>Due: {new Date(survey.dueDate).toLocaleDateString()}</span>}
+                      </div>
+                    </div>
+                    <Button variant="outline" size="sm">
+                      <BarChart3 className="mr-2 h-4 w-4" />
+                      View Results
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+
+            {surveys.length === 0 && (
+              <Card>
+                <CardContent className="py-8 text-center">
+                  <ClipboardList className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                  <p className="text-lg font-medium">No surveys yet</p>
+                  <p className="text-sm text-muted-foreground mb-4">Create surveys to gather employee feedback</p>
+                  <Button onClick={() => setIsSurveyDialogOpen(true)}>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Create Survey
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
           </TabsContent>
         </Tabs>
       </div>

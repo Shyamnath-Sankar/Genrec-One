@@ -28,13 +28,14 @@ type LeaveType = {
   name: string
   code: string
   color: string | null
-  isPaid: boolean
-  requiresApproval: boolean
+  is_paid_leave: boolean
+  requires_document: boolean
+  annual_quota: number
 }
 
 type LeaveBalance = {
-  leaveTypeId: string
-  currentBalance: number
+  leave_type_id: string
+  current_balance: number
 }
 
 export default function ApplyLeavePage() {
@@ -102,8 +103,8 @@ export default function ApplyLeavePage() {
   }
 
   const getBalance = () => {
-    const balance = balances.find((b) => b.leaveTypeId === formData.leaveTypeId)
-    return balance?.currentBalance || 0
+    const balance = balances.find((b) => b.leave_type_id === formData.leaveTypeId)
+    return balance?.current_balance || 0
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -197,7 +198,7 @@ export default function ApplyLeavePage() {
                   </SelectTrigger>
                   <SelectContent>
                     {leaveTypes.map((type) => {
-                      const balance = balances.find((b) => b.leaveTypeId === type.id)
+                      const balance = balances.find((b) => b.leave_type_id === type.id)
                       return (
                         <SelectItem key={type.id} value={type.id}>
                           <div className="flex items-center gap-2">
@@ -207,7 +208,7 @@ export default function ApplyLeavePage() {
                             />
                             {type.name}
                             <span className="text-muted-foreground">
-                              ({balance?.currentBalance || 0} days available)
+                              ({balance?.current_balance || 0} days available)
                             </span>
                           </div>
                         </SelectItem>
@@ -218,7 +219,7 @@ export default function ApplyLeavePage() {
                 {selectedType && (
                   <p className="text-sm text-muted-foreground">
                     Available balance: <strong>{getBalance()} days</strong>
-                    {selectedType.isPaid ? ' (Paid leave)' : ' (Unpaid leave)'}
+                    {selectedType.is_paid_leave ? ' (Paid leave)' : ' (Unpaid leave)'}
                   </p>
                 )}
               </div>
