@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Boolean, Date, DateTime, Numeric, ForeignKey, Enum, Text
+from sqlalchemy import Column, String, Boolean, Date, DateTime, Numeric, ForeignKey, Enum, Text, UniqueConstraint
 from sqlalchemy.orm import relationship
 from app.models.base import Base, TimestampMixin
 import uuid
@@ -31,6 +31,9 @@ class AttendanceSource(str, enum.Enum):
 
 class Attendance(Base, TimestampMixin):
     __tablename__ = "attendance"
+    __table_args__ = (
+        UniqueConstraint('employee_id', 'date', name='uq_attendance_employee_date'),
+    )
 
     id = Column(String(36), primary_key=True, default=generate_uuid)
     employee_id = Column(String(36), ForeignKey("employees.id"), nullable=False, index=True)
@@ -52,11 +55,6 @@ class Attendance(Base, TimestampMixin):
 
     # Relationships
     employee = relationship("Employee", back_populates="attendance_records")
-
-    __table_args__ = (
-        # Unique constraint on employee_id and date
-        {"sqlite_autoincrement": True},
-    )
 
 
 class ApprovalStatus(str, enum.Enum):

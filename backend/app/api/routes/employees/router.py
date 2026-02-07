@@ -393,6 +393,27 @@ async def create_department(
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new department"""
+    # Check for duplicate name
+    existing_name = await db.execute(
+        select(Department)
+        .where(Department.company_id == current_employee.company_id)
+        .where(Department.name == data.name)
+        .where(Department.is_active == True)
+    )
+    if existing_name.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail=f"Department with name '{data.name}' already exists")
+
+    # Check for duplicate code if provided
+    if data.code:
+        existing_code = await db.execute(
+            select(Department)
+            .where(Department.company_id == current_employee.company_id)
+            .where(Department.code == data.code)
+            .where(Department.is_active == True)
+        )
+        if existing_code.scalar_one_or_none():
+            raise HTTPException(status_code=400, detail=f"Department with code '{data.code}' already exists")
+
     department = Department(
         id=str(uuid.uuid4()),
         company_id=current_employee.company_id,
@@ -483,6 +504,25 @@ async def create_designation(
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new designation"""
+    # Check for duplicate name
+    existing_name = await db.execute(
+        select(Designation)
+        .where(Designation.name == data.name)
+        .where(Designation.is_active == True)
+    )
+    if existing_name.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail=f"Designation with name '{data.name}' already exists")
+
+    # Check for duplicate code if provided
+    if data.code:
+        existing_code = await db.execute(
+            select(Designation)
+            .where(Designation.code == data.code)
+            .where(Designation.is_active == True)
+        )
+        if existing_code.scalar_one_or_none():
+            raise HTTPException(status_code=400, detail=f"Designation with code '{data.code}' already exists")
+
     designation = Designation(
         id=str(uuid.uuid4()),
         name=data.name,
@@ -498,3 +538,141 @@ async def create_designation(
         message="Designation created successfully",
         data={"id": designation.id},
     )
+
+
+# Department Update and Delete
+@router.put("/departments/{department_id}", response_model=DataResponse)
+async def update_department(
+    department_id: str,
+    data: DepartmentCreate,
+    current_employee: Employee = Depends(get_current_employee),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update a department"""
+    result = await db.execute(
+        select(Department)
+        .where(Department.id == department_id)
+        .where(Department.company_id == current_employee.company_id)
+    )
+    department = result.scalar_one_or_none()
+
+    if not department:
+        raise HTTPException(status_code=404, detail="Department not found")
+
+    department.name = data.name
+    if data.code:
+        department.code = data.code
+    if data.description is not None:
+        department.description = data.description
+    if data.parent_id is not None:
+        department.parent_id = data.parent_id
+    if data.head_id is not None:
+        department.head_id = data.head_id
+
+    await db.commit()
+
+    return DataResponse(message="Department updated successfully")
+
+
+@router.delete("/departments/{department_id}", response_model=DataResponse)
+async def delete_department(
+    department_id: str,
+    current_employee: Employee = Depends(get_current_employee),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a department (soft delete)"""
+    result = await db.execute(
+        select(Department)
+        .where(Department.id == department_id)
+        .where(Department.company_id == current_employee.company_id)
+    )
+    department = result.scalar_one_or_none()
+
+    if not department:
+        raise HTTPException(status_code=404, detail="Department not found")
+
+    # Check if department has employees
+    emp_count = await db.execute(
+        select(func.count())
+        .select_from(Employee)
+        .where(Employee.department_id == department_id)
+    )
+    count = emp_count.scalar() or 0
+
+    if count > 0:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Cannot delete department with {count} employees. Reassign employees first."
+        )
+
+    department.is_active = False
+    await db.commit()
+
+    return DataResponse(message="Department deleted successfully")
+
+
+# Designation Update and Delete
+@router.put("/designations/{designation_id}", response_model=DataResponse)
+async def update_designation(
+    designation_id: str,
+    data: DesignationCreate,
+    current_employee: Employee = Depends(get_current_employee),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update a designation"""
+    result = await db.execute(
+        select(Designation).where(Designation.id == designation_id)
+    )
+    designation = result.scalar_one_or_none()
+
+    if not designation:
+        raise HTTPException(status_code=404, detail="Designation not found")
+
+    designation.name = data.name
+    if data.code:
+        designation.code = data.code
+    if data.level is not None:
+        designation.level = str(data.level)
+    if data.description is not None:
+        designation.description = data.description
+    if data.department_id is not None:
+        designation.department_id = data.department_id
+
+    await db.commit()
+
+    return DataResponse(message="Designation updated successfully")
+
+
+@router.delete("/designations/{designation_id}", response_model=DataResponse)
+async def delete_designation(
+    designation_id: str,
+    current_employee: Employee = Depends(get_current_employee),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a designation (soft delete)"""
+    result = await db.execute(
+        select(Designation).where(Designation.id == designation_id)
+    )
+    designation = result.scalar_one_or_none()
+
+    if not designation:
+        raise HTTPException(status_code=404, detail="Designation not found")
+
+    # Check if designation has employees
+    emp_count = await db.execute(
+        select(func.count())
+        .select_from(Employee)
+        .where(Employee.designation_id == designation_id)
+    )
+    count = emp_count.scalar() or 0
+
+    if count > 0:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Cannot delete designation with {count} employees. Reassign employees first."
+        )
+
+    designation.is_active = False
+    await db.commit()
+
+    return DataResponse(message="Designation deleted successfully")

@@ -29,6 +29,13 @@ class AssetCreate(BaseModel):
     notes: Optional[str] = None
 
 
+class AssetCategoryCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    code: str = Field(..., min_length=1, max_length=20)
+    description: Optional[str] = None
+    depreciation: Optional[float] = None
+
+
 class AssetAssign(BaseModel):
     employee_id: str
     assigned_date: date
@@ -37,6 +44,37 @@ class AssetAssign(BaseModel):
 
 
 router = APIRouter(prefix="/assets", tags=["Assets"])
+
+
+@router.post("/categories", response_model=DataResponse)
+async def create_asset_category(
+    data: AssetCategoryCreate,
+    current_employee: Employee = Depends(get_current_employee),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create an asset category"""
+    # Check if code exists
+    existing = await db.execute(
+        select(AssetCategory).where(AssetCategory.code == data.code)
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="Category code already exists")
+    
+    category = AssetCategory(
+        id=str(uuid.uuid4()),
+        name=data.name,
+        code=data.code,
+        description=data.description,
+        depreciation=Decimal(str(data.depreciation)) if data.depreciation else None,
+        created_at=datetime.utcnow(),
+    )
+    db.add(category)
+    await db.commit()
+    
+    return DataResponse(
+        message="Category created successfully",
+        data={"id": category.id, "code": category.code},
+    )
 
 
 @router.get("/categories", response_model=DataResponse)

@@ -92,6 +92,7 @@ class PayrollRun(Base, TimestampMixin):
     __tablename__ = "payroll_runs"
 
     id = Column(String(36), primary_key=True, default=generate_uuid)
+    company_id = Column(String(36), ForeignKey("companies.id"), nullable=False, index=True)
     month = Column(Integer, nullable=False)
     year = Column(Integer, nullable=False)
     status = Column(Enum(PayrollStatus), default=PayrollStatus.DRAFT)

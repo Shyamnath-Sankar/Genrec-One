@@ -130,10 +130,7 @@ async def check_out(
         delta = now - attendance.check_in_time
         total_hours = delta.total_seconds() / 3600
         attendance.total_hours = Decimal(str(round(total_hours, 2)))
-
-        # Determine status based on hours
-        if total_hours < 4:
-            attendance.status = AttendanceStatus.HALF_DAY
+        # Keep status as PRESENT regardless of hours worked
 
     await db.commit()
 

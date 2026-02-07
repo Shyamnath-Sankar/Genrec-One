@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Boolean, Text, ForeignKey
+from sqlalchemy import Column, String, Boolean, Text, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import relationship
 from app.models.types import JSONB
 from app.models.base import Base, TimestampMixin
@@ -35,6 +35,10 @@ class Company(Base, TimestampMixin):
 
 class Department(Base, TimestampMixin):
     __tablename__ = "departments"
+    __table_args__ = (
+        UniqueConstraint('company_id', 'code', name='uq_department_company_code'),
+        UniqueConstraint('company_id', 'name', name='uq_department_company_name'),
+    )
 
     id = Column(String(36), primary_key=True, default=generate_uuid)
     company_id = Column(String(36), ForeignKey("companies.id"), nullable=False)
@@ -54,6 +58,10 @@ class Department(Base, TimestampMixin):
 
 class Designation(Base, TimestampMixin):
     __tablename__ = "designations"
+    __table_args__ = (
+        UniqueConstraint('code', name='uq_designation_code'),
+        UniqueConstraint('name', name='uq_designation_name'),
+    )
 
     id = Column(String(36), primary_key=True, default=generate_uuid)
     department_id = Column(String(36), ForeignKey("departments.id"), nullable=True)

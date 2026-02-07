@@ -596,7 +596,7 @@ export function ChatWidget() {
 
         {/* Messages */}
         <div className="flex-1 flex flex-col overflow-hidden bg-muted/20">
-          <ScrollArea className="flex-1" ref={scrollAreaRef}>
+          <ScrollArea className="flex-1 h-0" ref={scrollAreaRef}>
             {messages.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-center p-6">
                 {/* Welcome Icon */}
@@ -674,11 +674,10 @@ export function ChatWidget() {
             <div className="flex gap-2">
               <Textarea
                 ref={inputRef}
-                placeholder="Ask me anything..."
+                placeholder={isStreaming ? "Waiting for response..." : "Ask me anything..."}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                disabled={isStreaming}
                 className={cn(
                   'min-h-[44px] max-h-[120px] resize-none rounded-xl',
                   'border-border/50 bg-muted/50',

@@ -32,6 +32,11 @@ type Designation = {
   name: string
 }
 
+type Role = {
+  id: string
+  name: string
+}
+
 type Manager = {
   id: string
   firstName: string
@@ -47,18 +52,18 @@ type FormData = {
   dateOfBirth: string
   gender: string
   maritalStatus: string
-  bloodGroup: string
-  address: string
-  city: string
-  state: string
-  country: string
-  postalCode: string
+  addressLine1: string
+  addressCity: string
+  addressState: string
+  addressCountry: string
+  addressPostalCode: string
   emergencyContactName: string
   emergencyContactPhone: string
   emergencyContactRelation: string
   departmentId: string
   designationId: string
   reportingManagerId: string
+  roleId: string
   dateOfJoining: string
   employmentType: string
   workLocation: string
@@ -66,7 +71,7 @@ type FormData = {
   bankAccountNumber: string
   bankIfscCode: string
   panNumber: string
-  aadharNumber: string
+  aadhaarNumber: string
 }
 
 const initialFormData: FormData = {
@@ -77,26 +82,26 @@ const initialFormData: FormData = {
   dateOfBirth: '',
   gender: '',
   maritalStatus: '',
-  bloodGroup: '',
-  address: '',
-  city: '',
-  state: '',
-  country: '',
-  postalCode: '',
+  addressLine1: '',
+  addressCity: '',
+  addressState: '',
+  addressCountry: '',
+  addressPostalCode: '',
   emergencyContactName: '',
   emergencyContactPhone: '',
   emergencyContactRelation: '',
   departmentId: '',
   designationId: '',
   reportingManagerId: '',
+  roleId: '',
   dateOfJoining: '',
   employmentType: 'FULL_TIME',
-  workLocation: 'OFFICE',
+  workLocation: '',
   bankName: '',
   bankAccountNumber: '',
   bankIfscCode: '',
   panNumber: '',
-  aadharNumber: '',
+  aadhaarNumber: '',
 }
 
 export default function NewEmployeePage() {
@@ -105,8 +110,10 @@ export default function NewEmployeePage() {
   const [formData, setFormData] = useState<FormData>(initialFormData)
   const [departments, setDepartments] = useState<Department[]>([])
   const [designations, setDesignations] = useState<Designation[]>([])
+  const [roles, setRoles] = useState<Role[]>([])
   const [managers, setManagers] = useState<Manager[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
   const [errors, setErrors] = useState<Partial<Record<keyof FormData, string>>>({})
 
   useEffect(() => {
@@ -128,17 +135,64 @@ export default function NewEmployeePage() {
 
   const fetchDropdownData = async () => {
     try {
-      const [depts, desigs, mgrs] = await Promise.all([
-        apiClient.get<Department[]>('/employees/departments'),
-        apiClient.get<Designation[]>('/employees/designations'),
-        apiClient.get<{ data: Manager[] }>('/employees?limit=100&status=ACTIVE'),
+      setIsLoading(true)
+      
+      // Fetch all data with individual error handling
+      let depts: Department[] = []
+      let desigs: Designation[] = []
+      let rolesList: Role[] = []
+      let mgrsList: Manager[] = []
+
+      // Fetch roles first - required for form
+      try {
+        const rolesRes = await apiClient.get<Role[] | { data: Role[] }>('/settings/roles')
+        rolesList = Array.isArray(rolesRes) ? rolesRes : (rolesRes as any)?.data || []
+      } catch (e) {
+        console.error('Failed to fetch roles:', e)
+      }
+
+      // Fetch other data in parallel - optional
+      const [deptsResult, desigsResult, mgrsResult] = await Promise.allSettled([
+        apiClient.get<Department[] | { data: Department[] }>('/employees/departments'),
+        apiClient.get<Designation[] | { data: Designation[] }>('/employees/designations'),
+        apiClient.get<{ items: Manager[] } | Manager[]>('/employees?limit=100'),
       ])
 
-      setDepartments(Array.isArray(depts) ? depts : [])
-      setDesignations(Array.isArray(desigs) ? desigs : [])
-      setManagers(mgrs?.data && Array.isArray(mgrs.data) ? mgrs.data : [])
+      if (deptsResult.status === 'fulfilled') {
+        const deptsRes = deptsResult.value
+        depts = Array.isArray(deptsRes) ? deptsRes : (deptsRes as any)?.data || []
+      }
+
+      if (desigsResult.status === 'fulfilled') {
+        const desigsRes = desigsResult.value
+        desigs = Array.isArray(desigsRes) ? desigsRes : (desigsRes as any)?.data || []
+      }
+
+      if (mgrsResult.status === 'fulfilled') {
+        const mgrsRes = mgrsResult.value
+        mgrsList = Array.isArray(mgrsRes) ? mgrsRes : (mgrsRes as any)?.items || (mgrsRes as any)?.data || []
+      }
+
+      setDepartments(depts)
+      setDesignations(desigs)
+      setRoles(rolesList)
+      setManagers(mgrsList)
+      
+      // Set default role if available (first non-admin role or first role)
+      if (rolesList.length > 0) {
+        const defaultRole = rolesList.find((r: Role) => r.name.toLowerCase() !== 'super admin') || rolesList[0]
+        if (defaultRole) {
+          setFormData(prev => ({ ...prev, roleId: defaultRole.id }))
+        }
+      } else {
+        // Only show error if roles failed to load (it's required)
+        toast.error('Failed to load roles. Please refresh the page.')
+      }
     } catch (error) {
       console.error('Failed to fetch dropdown data:', error)
+      toast.error('Failed to load form data. Please refresh.')
+    } finally {
+      setIsLoading(false)
     }
   }
 
@@ -166,6 +220,9 @@ export default function NewEmployeePage() {
     if (!formData.dateOfJoining) {
       newErrors.dateOfJoining = 'Date of joining is required'
     }
+    if (!formData.roleId) {
+      newErrors.roleId = 'Role is required'
+    }
 
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
@@ -182,11 +239,55 @@ export default function NewEmployeePage() {
     setIsSubmitting(true)
 
     try {
-      const payload = {
-        ...formData,
-        departmentId: formData.departmentId || null,
-        designationId: formData.designationId || null,
-        reportingManagerId: formData.reportingManagerId || null,
+      // Build payload matching backend EmployeeCreate schema
+      const payload: Record<string, unknown> = {
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        email: formData.email,
+        dateOfJoining: formData.dateOfJoining,
+        roleId: formData.roleId,
+        employmentType: formData.employmentType || 'FULL_TIME',
+      }
+
+      // Optional fields - only include if they have values
+      if (formData.phone) payload.phone = formData.phone
+      if (formData.dateOfBirth) payload.dateOfBirth = formData.dateOfBirth
+      if (formData.gender) payload.gender = formData.gender
+      if (formData.maritalStatus) payload.maritalStatus = formData.maritalStatus
+      if (formData.departmentId) payload.departmentId = formData.departmentId
+      if (formData.designationId) payload.designationId = formData.designationId
+      if (formData.reportingManagerId) payload.reportingManagerId = formData.reportingManagerId
+      if (formData.workLocation) payload.workLocation = formData.workLocation
+      if (formData.panNumber) payload.panNumber = formData.panNumber
+      if (formData.aadhaarNumber) payload.aadhaarNumber = formData.aadhaarNumber
+
+      // Build address object if any address field is filled
+      if (formData.addressLine1 || formData.addressCity) {
+        payload.currentAddress = {
+          line1: formData.addressLine1 || '',
+          city: formData.addressCity || '',
+          state: formData.addressState || '',
+          country: formData.addressCountry || 'India',
+          postalCode: formData.addressPostalCode || '',
+        }
+      }
+
+      // Build emergency contact if name is provided
+      if (formData.emergencyContactName) {
+        payload.emergencyContact = {
+          name: formData.emergencyContactName,
+          relationship: formData.emergencyContactRelation || 'Other',
+          phone: formData.emergencyContactPhone || '',
+        }
+      }
+
+      // Build bank details if account number is provided
+      if (formData.bankAccountNumber) {
+        payload.bankDetails = {
+          accountNumber: formData.bankAccountNumber,
+          ifscCode: formData.bankIfscCode || '',
+          bankName: formData.bankName || '',
+        }
       }
 
       await apiClient.post('/employees', payload)
@@ -200,7 +301,7 @@ export default function NewEmployeePage() {
     }
   }
 
-  if (authLoading) {
+  if (authLoading || isLoading) {
     return (
       <DashboardLayout>
         <div className="flex items-center justify-center py-12">
@@ -325,25 +426,6 @@ export default function NewEmployeePage() {
                 </SelectContent>
               </Select>
             </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="bloodGroup">Blood Group</Label>
-              <Select value={formData.bloodGroup} onValueChange={(v) => handleChange('bloodGroup', v)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select blood group" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="A+">A+</SelectItem>
-                  <SelectItem value="A-">A-</SelectItem>
-                  <SelectItem value="B+">B+</SelectItem>
-                  <SelectItem value="B-">B-</SelectItem>
-                  <SelectItem value="AB+">AB+</SelectItem>
-                  <SelectItem value="AB-">AB-</SelectItem>
-                  <SelectItem value="O+">O+</SelectItem>
-                  <SelectItem value="O-">O-</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
           </CardContent>
         </Card>
 
@@ -355,52 +437,52 @@ export default function NewEmployeePage() {
           </CardHeader>
           <CardContent className="grid gap-6 sm:grid-cols-2 md:grid-cols-3">
             <div className="space-y-2 sm:col-span-2 md:col-span-3">
-              <Label htmlFor="address">Street Address</Label>
+              <Label htmlFor="addressLine1">Street Address</Label>
               <Textarea
-                id="address"
-                value={formData.address}
-                onChange={(e) => handleChange('address', e.target.value)}
+                id="addressLine1"
+                value={formData.addressLine1}
+                onChange={(e) => handleChange('addressLine1', e.target.value)}
                 placeholder="123 Main Street, Apt 4B"
                 rows={2}
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="city">City</Label>
+              <Label htmlFor="addressCity">City</Label>
               <Input
-                id="city"
-                value={formData.city}
-                onChange={(e) => handleChange('city', e.target.value)}
+                id="addressCity"
+                value={formData.addressCity}
+                onChange={(e) => handleChange('addressCity', e.target.value)}
                 placeholder="New York"
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="state">State</Label>
+              <Label htmlFor="addressState">State</Label>
               <Input
-                id="state"
-                value={formData.state}
-                onChange={(e) => handleChange('state', e.target.value)}
+                id="addressState"
+                value={formData.addressState}
+                onChange={(e) => handleChange('addressState', e.target.value)}
                 placeholder="NY"
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="country">Country</Label>
+              <Label htmlFor="addressCountry">Country</Label>
               <Input
-                id="country"
-                value={formData.country}
-                onChange={(e) => handleChange('country', e.target.value)}
+                id="addressCountry"
+                value={formData.addressCountry}
+                onChange={(e) => handleChange('addressCountry', e.target.value)}
                 placeholder="USA"
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="postalCode">Postal Code</Label>
+              <Label htmlFor="addressPostalCode">Postal Code</Label>
               <Input
-                id="postalCode"
-                value={formData.postalCode}
-                onChange={(e) => handleChange('postalCode', e.target.value)}
+                id="addressPostalCode"
+                value={formData.addressPostalCode}
+                onChange={(e) => handleChange('addressPostalCode', e.target.value)}
                 placeholder="10001"
               />
             </div>
@@ -465,12 +547,30 @@ export default function NewEmployeePage() {
             </div>
 
             <div className="space-y-2">
+              <Label htmlFor="roleId">Role *</Label>
+              <Select value={formData.roleId} onValueChange={(v) => handleChange('roleId', v)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select role" />
+                </SelectTrigger>
+                <SelectContent>
+                  {roles.map((role) => (
+                    <SelectItem key={role.id} value={role.id}>
+                      {role.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {errors.roleId && <p className="text-sm text-red-500">{errors.roleId}</p>}
+            </div>
+
+            <div className="space-y-2">
               <Label htmlFor="departmentId">Department</Label>
-              <Select value={formData.departmentId} onValueChange={(v) => handleChange('departmentId', v)}>
+              <Select value={formData.departmentId || "none"} onValueChange={(v) => handleChange('departmentId', v === "none" ? "" : v)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select department" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="none">None</SelectItem>
                   {departments.map((dept) => (
                     <SelectItem key={dept.id} value={dept.id}>
                       {dept.name}
@@ -482,11 +582,12 @@ export default function NewEmployeePage() {
 
             <div className="space-y-2">
               <Label htmlFor="designationId">Designation</Label>
-              <Select value={formData.designationId} onValueChange={(v) => handleChange('designationId', v)}>
+              <Select value={formData.designationId || "none"} onValueChange={(v) => handleChange('designationId', v === "none" ? "" : v)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select designation" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="none">None</SelectItem>
                   {designations.map((desig) => (
                     <SelectItem key={desig.id} value={desig.id}>
                       {desig.name}
@@ -498,11 +599,12 @@ export default function NewEmployeePage() {
 
             <div className="space-y-2">
               <Label htmlFor="reportingManagerId">Reporting Manager</Label>
-              <Select value={formData.reportingManagerId} onValueChange={(v) => handleChange('reportingManagerId', v)}>
+              <Select value={formData.reportingManagerId || "none"} onValueChange={(v) => handleChange('reportingManagerId', v === "none" ? "" : v)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select manager" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="none">None</SelectItem>
                   {managers.map((mgr) => (
                     <SelectItem key={mgr.id} value={mgr.id}>
                       {mgr.firstName} {mgr.lastName} ({mgr.employeeId})
@@ -530,16 +632,12 @@ export default function NewEmployeePage() {
 
             <div className="space-y-2">
               <Label htmlFor="workLocation">Work Location</Label>
-              <Select value={formData.workLocation} onValueChange={(v) => handleChange('workLocation', v)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select location" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="OFFICE">Office</SelectItem>
-                  <SelectItem value="REMOTE">Remote</SelectItem>
-                  <SelectItem value="HYBRID">Hybrid</SelectItem>
-                </SelectContent>
-              </Select>
+              <Input
+                id="workLocation"
+                value={formData.workLocation}
+                onChange={(e) => handleChange('workLocation', e.target.value)}
+                placeholder="e.g., Head Office, Remote"
+              />
             </div>
           </CardContent>
         </Card>
@@ -601,11 +699,11 @@ export default function NewEmployeePage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="aadharNumber">National ID</Label>
+              <Label htmlFor="aadhaarNumber">National ID</Label>
               <Input
-                id="aadharNumber"
-                value={formData.aadharNumber}
-                onChange={(e) => handleChange('aadharNumber', e.target.value)}
+                id="aadhaarNumber"
+                value={formData.aadhaarNumber}
+                onChange={(e) => handleChange('aadhaarNumber', e.target.value)}
                 placeholder="1234 5678 9012"
               />
             </div>
