@@ -115,3 +115,4 @@ class Employee(Base, TimestampMixin):
     shift_assignments = relationship("ShiftAssignment", back_populates="employee")
     overtime_records = relationship("Overtime", back_populates="employee")
     trainings = relationship("EmployeeTraining", back_populates="employee")
+    chat_sessions = relationship("ChatSession", back_populates="employee")

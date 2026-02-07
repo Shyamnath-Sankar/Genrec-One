@@ -41,6 +41,11 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: Optional[str] = None
     SMTP_FROM_EMAIL: Optional[str] = None
     
+    # AI Chatbot (Gemini via OpenAI-compatible API)
+    OPENAI_API_KEY: Optional[str] = "AIzaSyClfR2l60sH8cZe8_sDA4v9y1xV-osG9Ck"
+    OPENAI_BASE_URL: str = "https://generativelanguage.googleapis.com/v1beta/openai"
+    AI_MODEL: str = "gemini-2.5-flash"
+    
     class Config:
         env_file = ".env"
         case_sensitive = True

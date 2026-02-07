@@ -28,6 +28,7 @@ from app.api.routes.workflows.router import router as workflows_router
 from app.api.routes.engagement.router import router as engagement_router
 from app.api.routes.analytics.router import router as analytics_router
 from app.api.routes.shifts.router import router as shifts_router
+from app.api.routes.chat.router import router as chat_router
 
 # Initialize logging
 logger = setup_logging()
@@ -144,6 +145,7 @@ app.include_router(workflows_router, prefix="/api/v1")
 app.include_router(engagement_router, prefix="/api/v1")
 app.include_router(analytics_router, prefix="/api/v1")
 app.include_router(shifts_router, prefix="/api/v1")
+app.include_router(chat_router, prefix="/api/v1")
 
 
 @app.get("/")

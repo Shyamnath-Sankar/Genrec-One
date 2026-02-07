@@ -50,6 +50,10 @@ from app.models.analytics import (
 from app.models.audit import (
     ActivityLog, DataExportLog, LoginHistory, PermissionChangeLog, AuditAction
 )
+from app.models.chat import (
+    ChatSession, ChatMessage, ChatToolExecution,
+    MessageRole, MessageStatus
+)
 
 __all__ = [
     "Base",
@@ -173,4 +177,10 @@ __all__ = [
     "LoginHistory",
     "PermissionChangeLog",
     "AuditAction",
+    # Chat
+    "ChatSession",
+    "ChatMessage",
+    "ChatToolExecution",
+    "MessageRole",
+    "MessageStatus",
 ]

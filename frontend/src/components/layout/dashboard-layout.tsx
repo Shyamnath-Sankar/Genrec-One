@@ -53,6 +53,7 @@ import { PERMISSIONS, Permission } from '@/lib/constants'
 import { useTheme } from 'next-themes'
 import { toast } from 'sonner'
 import { format } from 'date-fns'
+import { ChatWidget } from '@/components/chat'
 
 type NavItem = {
   title: string
@@ -592,6 +593,8 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
         <Header />
         <main className="flex-1 overflow-auto p-4 lg:p-6">{children}</main>
       </div>
+      {/* AI Chat Widget */}
+      <ChatWidget />
     </div>
   )
 }
