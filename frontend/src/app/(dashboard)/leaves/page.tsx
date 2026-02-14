@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/table'
 import { Calendar, Plus, Clock, CheckCircle, XCircle, CalendarDays } from 'lucide-react'
 import { format } from 'date-fns'
+import { toast } from 'sonner'
 
 type LeaveBalance = {
   leaveTypeId: string
@@ -72,6 +73,7 @@ export default function LeavesPage() {
       setBalances(Array.isArray(balanceData) ? balanceData : [])
       setApplications(appResult.data || [])
     } catch (error) {
+      toast.error('Failed to load leave data')
       console.error('Failed to fetch leave data:', error)
     } finally {
       setIsLoading(false)

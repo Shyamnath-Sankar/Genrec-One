@@ -219,6 +219,15 @@ export default function NewEmployeePage() {
     }
     if (!formData.dateOfJoining) {
       newErrors.dateOfJoining = 'Date of joining is required'
+    } else {
+      // Warn if joining date is more than 30 days in the past
+      const joinDate = new Date(formData.dateOfJoining)
+      const thirtyDaysAgo = new Date()
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+      if (joinDate < thirtyDaysAgo) {
+        // Allow but warn - don't block submission
+        toast.warning('Joining date is more than 30 days in the past. Please verify.')
+      }
     }
     if (!formData.roleId) {
       newErrors.roleId = 'Role is required'
@@ -306,6 +315,21 @@ export default function NewEmployeePage() {
       <DashboardLayout>
         <div className="flex items-center justify-center py-12">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      </DashboardLayout>
+    )
+  }
+
+  // Hydration guard: Don't render form until required data is loaded
+  if (roles.length === 0) {
+    return (
+      <DashboardLayout>
+        <div className="flex flex-col items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground mb-4" />
+          <p className="text-muted-foreground">Loading form data...</p>
+          <p className="text-sm text-muted-foreground mt-2">
+            If this persists, please refresh the page.
+          </p>
         </div>
       </DashboardLayout>
     )

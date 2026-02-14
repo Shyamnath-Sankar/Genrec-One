@@ -203,6 +203,14 @@ class HolidayCreate(BaseModel):
     description: Optional[str] = None
 
 
+class HolidayUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    date: Optional[date] = None
+    type: Optional[str] = None
+    is_optional: Optional[bool] = None
+    description: Optional[str] = None
+
+
 class HolidayResponse(BaseModel):
     id: str
     name: str

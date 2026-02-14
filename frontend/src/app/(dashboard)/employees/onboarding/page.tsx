@@ -52,7 +52,10 @@ type Employee = {
   firstName: string
   lastName: string
   email: string
-  joiningDate: string
+  employeeId?: string
+  dateOfJoining?: string  // Backend returns date_of_joining -> dateOfJoining
+  departmentName?: string
+  designationName?: string
   department?: { name: string }
   designation?: { name: string }
 }
@@ -109,39 +112,49 @@ export default function OnboardingPage() {
     }
 
     if (isAuthenticated) {
-      fetchOnboardingRecords()
-      fetchNewEmployees()
+      // Fetch both data sources with proper synchronization
+      fetchAllData()
     }
   }, [authLoading, isAuthenticated, router])
 
+  const fetchAllData = async () => {
+    setIsLoading(true)
+    try {
+      // Use Promise.allSettled to fetch both in parallel but wait for both
+      await Promise.allSettled([
+        fetchOnboardingRecords(),
+        fetchNewEmployees(),
+      ])
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   const fetchOnboardingRecords = async () => {
     try {
-      setIsLoading(true)
       const data = await apiClient.get<OnboardingRecord[]>('/employees/onboarding')
       setRecords(Array.isArray(data) ? data : [])
     } catch (error) {
       console.error('Failed to fetch onboarding records:', error)
       // Use mock data for demo
       setRecords([])
-    } finally {
-      setIsLoading(false)
     }
   }
 
   const fetchNewEmployees = async () => {
     try {
-      // Get employees who joined in the last 30 days and don't have onboarding records
-      const data = await apiClient.get<{ items: Employee[] }>('/employees?status=active&limit=100')
-      const thirtyDaysAgo = new Date()
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+      // Get all employees for onboarding selection
+      const response = await apiClient.get<Employee[] | { data: Employee[] }>('/employees?limit=100')
+      const employees = Array.isArray(response) ? response : (response as any)?.data || []
       
-      const recent = (data.items || []).filter(emp => {
-        const joinDate = new Date(emp.joiningDate)
-        return joinDate >= thirtyDaysAgo
-      })
-      setNewEmployees(recent)
+      console.log('Fetched employees for onboarding:', employees)
+      
+      // Show ALL employees in the dropdown - don't filter by join date
+      // Any employee can have onboarding started/restarted
+      setNewEmployees(employees)
     } catch (error) {
       console.error('Failed to fetch employees:', error)
+      setNewEmployees([])
     }
   }
 
@@ -419,11 +432,11 @@ export default function OnboardingPage() {
                 </SelectTrigger>
                 <SelectContent>
                   {newEmployees.length === 0 ? (
-                    <SelectItem value="no-employees" disabled>No new employees found</SelectItem>
+                    <SelectItem value="no-employees" disabled>No employees found</SelectItem>
                   ) : (
                     newEmployees.map((emp) => (
                       <SelectItem key={emp.id} value={emp.id}>
-                        {emp.firstName} {emp.lastName} - {emp.email}
+                        {emp.firstName} {emp.lastName}{emp.employeeId ? ` (${emp.employeeId})` : ''}{emp.email ? ` - ${emp.email}` : ''}
                       </SelectItem>
                     ))
                   )}
@@ -446,7 +459,10 @@ export default function OnboardingPage() {
             <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={handleStartOnboarding} disabled={isSubmitting}>
+            <Button 
+              onClick={handleStartOnboarding} 
+              disabled={isSubmitting || !selectedEmployeeId || newEmployees.length === 0}
+            >
               {isSubmitting ? 'Starting...' : 'Start Onboarding'}
             </Button>
           </DialogFooter>

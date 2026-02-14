@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_
 from sqlalchemy.orm import selectinload
+from sqlalchemy.exc import IntegrityError
 from typing import Optional, List
 from datetime import datetime
 import uuid
@@ -25,6 +26,145 @@ from app.schemas.employee import (
 from app.schemas.auth import DataResponse, PaginatedResponse
 
 router = APIRouter(prefix="/employees", tags=["Employees"])
+
+
+# =============================================================================
+# IMPORTANT: Static routes must be defined BEFORE dynamic routes with path params
+# The /{employee_id} route must come AFTER all static routes like /departments,
+# /designations, /without-user, etc. to prevent route shadowing.
+# =============================================================================
+
+
+# Department routes (must be before /{employee_id})
+@router.get("/departments", response_model=DataResponse)
+async def get_departments(
+    current_employee: Employee = Depends(get_current_employee),
+    db: AsyncSession = Depends(get_db),
+):
+    """List all departments (simple endpoint)"""
+    result = await db.execute(
+        select(Department)
+        .where(Department.company_id == current_employee.company_id)
+        .where(Department.is_active == True)
+        .order_by(Department.name)
+    )
+    departments = result.scalars().all()
+
+    data = [
+        {
+            "id": dept.id,
+            "name": dept.name,
+            "code": dept.code,
+            "description": dept.description,
+        }
+        for dept in departments
+    ]
+
+    return DataResponse(data=data)
+
+
+@router.get("/departments/list", response_model=DataResponse)
+async def list_departments(
+    current_employee: Employee = Depends(get_current_employee),
+    db: AsyncSession = Depends(get_db),
+):
+    """List all departments with employee counts"""
+    result = await db.execute(
+        select(Department)
+        .where(Department.company_id == current_employee.company_id)
+        .where(Department.is_active == True)
+        .order_by(Department.name)
+    )
+    departments = result.scalars().all()
+
+    # Get employee counts
+    data = []
+    for dept in departments:
+        count_result = await db.execute(
+            select(func.count())
+            .select_from(Employee)
+            .where(Employee.department_id == dept.id)
+        )
+        count = count_result.scalar() or 0
+        
+        data.append({
+            "id": dept.id,
+            "name": dept.name,
+            "code": dept.code,
+            "description": dept.description,
+            "parent_id": dept.parent_id,
+            "head_id": dept.head_id,
+            "is_active": dept.is_active,
+            "employee_count": count,
+            "created_at": dept.created_at,
+        })
+
+    return DataResponse(data=data)
+
+
+# Designation routes (must be before /{employee_id})
+@router.get("/designations", response_model=DataResponse)
+async def get_designations(
+    department_id: Optional[str] = None,
+    current_employee: Employee = Depends(get_current_employee),
+    db: AsyncSession = Depends(get_db),
+):
+    """List all designations (simple endpoint)"""
+    query = select(Designation).where(Designation.is_active == True)
+    
+    if department_id:
+        query = query.where(Designation.department_id == department_id)
+    
+    query = query.order_by(Designation.level, Designation.name)
+    
+    result = await db.execute(query)
+    designations = result.scalars().all()
+
+    data = [
+        {
+            "id": d.id,
+            "name": d.name,
+            "code": d.code,
+            "level": d.level,
+        }
+        for d in designations
+    ]
+
+    return DataResponse(data=data)
+
+
+@router.get("/designations/list", response_model=DataResponse)
+async def list_designations(
+    department_id: Optional[str] = None,
+    current_employee: Employee = Depends(get_current_employee),
+    db: AsyncSession = Depends(get_db),
+):
+    """List all designations with details"""
+    query = select(Designation).where(Designation.is_active == True)
+    
+    if department_id:
+        query = query.where(Designation.department_id == department_id)
+    
+    query = query.order_by(Designation.level, Designation.name)
+    
+    result = await db.execute(query)
+    designations = result.scalars().all()
+
+    data = [
+        {
+            "id": d.id,
+            "name": d.name,
+            "code": d.code,
+            "level": d.level,
+            "description": d.description,
+            "department_id": d.department_id,
+            "is_active": d.is_active,
+            "created_at": d.created_at,
+        }
+        for d in designations
+    ]
+
+    return DataResponse(data=data)
 
 
 @router.get("/without-user", response_model=DataResponse)
@@ -221,7 +361,7 @@ async def create_employee(
         select(User).where(User.email == data.email)
     )
     if existing.scalar_one_or_none():
-        raise HTTPException(status_code=400, detail="Email already registered")
+        raise HTTPException(status_code=409, detail="Email already registered")
 
     # Generate employee ID
     last_emp = await db.execute(
@@ -319,73 +459,7 @@ async def update_employee(
     return DataResponse(message="Employee updated successfully")
 
 
-# Department routes
-@router.get("/departments", response_model=DataResponse)
-async def get_departments(
-    current_employee: Employee = Depends(get_current_employee),
-    db: AsyncSession = Depends(get_db),
-):
-    """List all departments (simple endpoint)"""
-    result = await db.execute(
-        select(Department)
-        .where(Department.company_id == current_employee.company_id)
-        .where(Department.is_active == True)
-        .order_by(Department.name)
-    )
-    departments = result.scalars().all()
-
-    data = [
-        {
-            "id": dept.id,
-            "name": dept.name,
-            "code": dept.code,
-            "description": dept.description,
-        }
-        for dept in departments
-    ]
-
-    return DataResponse(data=data)
-
-
-@router.get("/departments/list", response_model=DataResponse)
-async def list_departments(
-    current_employee: Employee = Depends(get_current_employee),
-    db: AsyncSession = Depends(get_db),
-):
-    """List all departments"""
-    result = await db.execute(
-        select(Department)
-        .where(Department.company_id == current_employee.company_id)
-        .where(Department.is_active == True)
-        .order_by(Department.name)
-    )
-    departments = result.scalars().all()
-
-    # Get employee counts
-    data = []
-    for dept in departments:
-        count_result = await db.execute(
-            select(func.count())
-            .select_from(Employee)
-            .where(Employee.department_id == dept.id)
-        )
-        count = count_result.scalar() or 0
-        
-        data.append({
-            "id": dept.id,
-            "name": dept.name,
-            "code": dept.code,
-            "description": dept.description,
-            "parent_id": dept.parent_id,
-            "head_id": dept.head_id,
-            "is_active": dept.is_active,
-            "employee_count": count,
-            "created_at": dept.created_at,
-        })
-
-    return DataResponse(data=data)
-
-
+# Department mutation routes (POST, PUT, DELETE)
 @router.post("/departments", response_model=DataResponse)
 async def create_department(
     data: DepartmentCreate,
@@ -401,7 +475,7 @@ async def create_department(
         .where(Department.is_active == True)
     )
     if existing_name.scalar_one_or_none():
-        raise HTTPException(status_code=400, detail=f"Department with name '{data.name}' already exists")
+        raise HTTPException(status_code=409, detail=f"Department with name '{data.name}' already exists")
 
     # Check for duplicate code if provided
     if data.code:
@@ -412,7 +486,7 @@ async def create_department(
             .where(Department.is_active == True)
         )
         if existing_code.scalar_one_or_none():
-            raise HTTPException(status_code=400, detail=f"Department with code '{data.code}' already exists")
+            raise HTTPException(status_code=409, detail=f"Department with code '{data.code}' already exists")
 
     department = Department(
         id=str(uuid.uuid4()),
@@ -432,71 +506,7 @@ async def create_department(
     )
 
 
-# Designation routes
-@router.get("/designations", response_model=DataResponse)
-async def get_designations(
-    department_id: Optional[str] = None,
-    current_employee: Employee = Depends(get_current_employee),
-    db: AsyncSession = Depends(get_db),
-):
-    """List all designations (simple endpoint)"""
-    query = select(Designation).where(Designation.is_active == True)
-    
-    if department_id:
-        query = query.where(Designation.department_id == department_id)
-    
-    query = query.order_by(Designation.level, Designation.name)
-    
-    result = await db.execute(query)
-    designations = result.scalars().all()
-
-    data = [
-        {
-            "id": d.id,
-            "name": d.name,
-            "code": d.code,
-            "level": d.level,
-        }
-        for d in designations
-    ]
-
-    return DataResponse(data=data)
-
-
-@router.get("/designations/list", response_model=DataResponse)
-async def list_designations(
-    department_id: Optional[str] = None,
-    current_employee: Employee = Depends(get_current_employee),
-    db: AsyncSession = Depends(get_db),
-):
-    """List all designations"""
-    query = select(Designation).where(Designation.is_active == True)
-    
-    if department_id:
-        query = query.where(Designation.department_id == department_id)
-    
-    query = query.order_by(Designation.level, Designation.name)
-    
-    result = await db.execute(query)
-    designations = result.scalars().all()
-
-    data = [
-        {
-            "id": d.id,
-            "name": d.name,
-            "code": d.code,
-            "level": d.level,
-            "description": d.description,
-            "department_id": d.department_id,
-            "is_active": d.is_active,
-            "created_at": d.created_at,
-        }
-        for d in designations
-    ]
-
-    return DataResponse(data=data)
-
-
+# Designation mutation routes (POST, PUT, DELETE)
 @router.post("/designations", response_model=DataResponse)
 async def create_designation(
     data: DesignationCreate,
@@ -511,7 +521,7 @@ async def create_designation(
         .where(Designation.is_active == True)
     )
     if existing_name.scalar_one_or_none():
-        raise HTTPException(status_code=400, detail=f"Designation with name '{data.name}' already exists")
+        raise HTTPException(status_code=409, detail=f"Designation with name '{data.name}' already exists")
 
     # Check for duplicate code if provided
     if data.code:
@@ -521,7 +531,7 @@ async def create_designation(
             .where(Designation.is_active == True)
         )
         if existing_code.scalar_one_or_none():
-            raise HTTPException(status_code=400, detail=f"Designation with code '{data.code}' already exists")
+            raise HTTPException(status_code=409, detail=f"Designation with code '{data.code}' already exists")
 
     designation = Designation(
         id=str(uuid.uuid4()),
@@ -558,6 +568,30 @@ async def update_department(
 
     if not department:
         raise HTTPException(status_code=404, detail="Department not found")
+
+    # Check for duplicate name (exclude current department)
+    if data.name != department.name:
+        existing_name = await db.execute(
+            select(Department)
+            .where(Department.company_id == current_employee.company_id)
+            .where(Department.name == data.name)
+            .where(Department.id != department_id)
+            .where(Department.is_active == True)
+        )
+        if existing_name.scalar_one_or_none():
+            raise HTTPException(status_code=409, detail=f"Department with name '{data.name}' already exists")
+
+    # Check for duplicate code (exclude current department)
+    if data.code and data.code != department.code:
+        existing_code = await db.execute(
+            select(Department)
+            .where(Department.company_id == current_employee.company_id)
+            .where(Department.code == data.code)
+            .where(Department.id != department_id)
+            .where(Department.is_active == True)
+        )
+        if existing_code.scalar_one_or_none():
+            raise HTTPException(status_code=409, detail=f"Department with code '{data.code}' already exists")
 
     department.name = data.name
     if data.code:
@@ -628,6 +662,28 @@ async def update_designation(
     if not designation:
         raise HTTPException(status_code=404, detail="Designation not found")
 
+    # Check for duplicate name (exclude current designation)
+    if data.name != designation.name:
+        existing_name = await db.execute(
+            select(Designation)
+            .where(Designation.name == data.name)
+            .where(Designation.id != designation_id)
+            .where(Designation.is_active == True)
+        )
+        if existing_name.scalar_one_or_none():
+            raise HTTPException(status_code=409, detail=f"Designation with name '{data.name}' already exists")
+
+    # Check for duplicate code (exclude current designation)
+    if data.code and data.code != designation.code:
+        existing_code = await db.execute(
+            select(Designation)
+            .where(Designation.code == data.code)
+            .where(Designation.id != designation_id)
+            .where(Designation.is_active == True)
+        )
+        if existing_code.scalar_one_or_none():
+            raise HTTPException(status_code=409, detail=f"Designation with code '{data.code}' already exists")
+
     designation.name = data.name
     if data.code:
         designation.code = data.code
@@ -676,3 +732,213 @@ async def delete_designation(
     await db.commit()
 
     return DataResponse(message="Designation deleted successfully")
+
+
+# =============================================================================
+# Onboarding API Endpoints
+# =============================================================================
+
+@router.get("/onboarding", response_model=DataResponse)
+async def get_onboarding_records(
+    status: Optional[str] = None,
+    current_employee: Employee = Depends(get_current_employee),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get all onboarding records for the company"""
+    from app.models.onboarding import OnboardingTask, OnboardingChecklist
+    from sqlalchemy.orm import selectinload
+    
+    # Get employees who have onboarding tasks
+    query = (
+        select(Employee)
+        .options(
+            selectinload(Employee.department),
+            selectinload(Employee.designation),
+        )
+        .where(Employee.company_id == current_employee.company_id)
+        .where(Employee.employment_status == "ACTIVE")
+    )
+    
+    result = await db.execute(query)
+    employees = result.scalars().all()
+    
+    records = []
+    for emp in employees:
+        # Get onboarding tasks for this employee
+        tasks_result = await db.execute(
+            select(OnboardingTask)
+            .options(selectinload(OnboardingTask.checklist))
+            .where(OnboardingTask.employee_id == emp.id)
+            .order_by(OnboardingTask.created_at)
+        )
+        tasks = tasks_result.scalars().all()
+        
+        if not tasks:
+            continue
+            
+        completed_count = sum(1 for t in tasks if t.is_completed)
+        total_count = len(tasks)
+        progress = int((completed_count / total_count) * 100) if total_count > 0 else 0
+        
+        # Determine status
+        if completed_count == 0:
+            record_status = "pending"
+        elif completed_count == total_count:
+            record_status = "completed"
+        else:
+            record_status = "in_progress"
+            
+        # Filter by status if provided
+        if status and record_status != status:
+            continue
+        
+        records.append({
+            "id": emp.id,
+            "employee": {
+                "id": emp.id,
+                "firstName": emp.first_name,
+                "lastName": emp.last_name,
+                "email": emp.work_email or emp.personal_email,
+                "joiningDate": emp.date_of_joining.isoformat() if emp.date_of_joining else None,
+                "department": {"name": emp.department.name} if emp.department else None,
+                "designation": {"name": emp.designation.name} if emp.designation else None,
+            },
+            "status": record_status,
+            "startDate": tasks[0].created_at.isoformat() if tasks else None,
+            "completedDate": max((t.completed_at for t in tasks if t.completed_at), default=None),
+            "progress": progress,
+            "tasks": [
+                {
+                    "id": t.id,
+                    "name": t.checklist.name if t.checklist else "Task",
+                    "description": t.checklist.description if t.checklist else None,
+                    "isCompleted": t.is_completed,
+                    "completedAt": t.completed_at.isoformat() if t.completed_at else None,
+                    "dueDate": t.due_date.isoformat() if t.due_date else None,
+                }
+                for t in tasks
+            ],
+        })
+    
+    return DataResponse(data=records)
+
+
+@router.post("/onboarding", response_model=DataResponse)
+async def create_onboarding(
+    data: dict,
+    current_employee: Employee = Depends(get_current_employee),
+    db: AsyncSession = Depends(get_db),
+):
+    """Start onboarding process for an employee"""
+    from app.models.onboarding import OnboardingTask, OnboardingChecklist
+    from datetime import datetime, timedelta
+    
+    employee_id = data.get("employee_id")
+    tasks_data = data.get("tasks", [])
+    
+    if not employee_id:
+        raise HTTPException(status_code=400, detail="employee_id is required")
+    
+    # Verify employee exists and belongs to same company
+    emp_result = await db.execute(
+        select(Employee)
+        .where(Employee.id == employee_id)
+        .where(Employee.company_id == current_employee.company_id)
+    )
+    employee = emp_result.scalar_one_or_none()
+    
+    if not employee:
+        raise HTTPException(status_code=404, detail="Employee not found")
+    
+    # Check if onboarding already started
+    existing = await db.execute(
+        select(OnboardingTask).where(OnboardingTask.employee_id == employee_id).limit(1)
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="Onboarding already started for this employee")
+    
+    # Create checklist items and tasks
+    created_tasks = []
+    for idx, task_data in enumerate(tasks_data):
+        # Create or get checklist item
+        checklist = OnboardingChecklist(
+            id=str(uuid.uuid4()),
+            name=task_data.get("name", f"Task {idx + 1}"),
+            description=task_data.get("description"),
+            task_order=task_data.get("order", idx + 1),
+            assigned_to="HR",
+            due_days=7,
+            is_active=True,
+            created_at=datetime.utcnow(),
+        )
+        db.add(checklist)
+        await db.flush()
+        
+        # Create task for employee
+        task = OnboardingTask(
+            id=str(uuid.uuid4()),
+            checklist_id=checklist.id,
+            employee_id=employee_id,
+            is_completed=False,
+            due_date=(datetime.utcnow() + timedelta(days=7)).date(),
+            created_at=datetime.utcnow(),
+        )
+        db.add(task)
+        created_tasks.append(task)
+    
+    await db.commit()
+    
+    return DataResponse(
+        message="Onboarding started successfully",
+        data={"employee_id": employee_id, "tasks_created": len(created_tasks)},
+    )
+
+
+@router.put("/onboarding/{record_id}/tasks/{task_id}", response_model=DataResponse)
+async def update_onboarding_task(
+    record_id: str,
+    task_id: str,
+    data: dict,
+    current_employee: Employee = Depends(get_current_employee),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update an onboarding task (mark complete/incomplete)"""
+    from app.models.onboarding import OnboardingTask
+    from datetime import datetime
+    
+    # Get the task
+    result = await db.execute(
+        select(OnboardingTask).where(OnboardingTask.id == task_id)
+    )
+    task = result.scalar_one_or_none()
+    
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    # Verify employee belongs to same company
+    emp_result = await db.execute(
+        select(Employee)
+        .where(Employee.id == task.employee_id)
+        .where(Employee.company_id == current_employee.company_id)
+    )
+    if not emp_result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    # Update task
+    is_completed = data.get("is_completed", False)
+    task.is_completed = is_completed
+    
+    if is_completed:
+        task.completed_at = datetime.utcnow()
+        task.completed_by_id = current_employee.id
+    else:
+        task.completed_at = None
+        task.completed_by_id = None
+    
+    if "notes" in data:
+        task.notes = data["notes"]
+    
+    await db.commit()
+    
+    return DataResponse(message="Task updated successfully")
+

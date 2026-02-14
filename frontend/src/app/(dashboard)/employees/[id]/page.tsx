@@ -230,7 +230,7 @@ export default function EmployeeDetailPage() {
                 {getStatusBadge(employee.employmentStatus)}
               </div>
               <p className="text-muted-foreground">
-                {employee.employeeId} | {employee.designationName || 'No Designation'}
+                {employee.employeeId} | {employee.designationName && employee.designationName !== 'None' ? employee.designationName : 'No Designation'}
               </p>
             </div>
           </div>
@@ -292,11 +292,11 @@ export default function EmployeeDetailPage() {
                 <CardContent className="space-y-4">
                   <div className="flex items-center gap-3">
                     <Building2 className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm">{employee.departmentName || 'No Department'}</span>
+                    <span className="text-sm">{employee.departmentName && employee.departmentName !== 'None' ? employee.departmentName : 'Not assigned'}</span>
                   </div>
                   <div className="flex items-center gap-3">
                     <Briefcase className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm">{employee.designationName || 'No Designation'}</span>
+                    <span className="text-sm">{employee.designationName && employee.designationName !== 'None' ? employee.designationName : 'Not assigned'}</span>
                   </div>
                   <div className="flex items-center gap-3">
                     <Calendar className="h-4 w-4 text-muted-foreground" />
@@ -461,11 +461,11 @@ export default function EmployeeDetailPage() {
                   </div>
                   <div>
                     <p className="text-sm font-medium text-muted-foreground">Department</p>
-                    <p className="mt-1">{employee.departmentName || '-'}</p>
+                    <p className="mt-1">{employee.departmentName && employee.departmentName !== 'None' ? employee.departmentName : 'Not assigned'}</p>
                   </div>
                   <div>
                     <p className="text-sm font-medium text-muted-foreground">Designation</p>
-                    <p className="mt-1">{employee.designationName || '-'}</p>
+                    <p className="mt-1">{employee.designationName && employee.designationName !== 'None' ? employee.designationName : 'Not assigned'}</p>
                   </div>
                   <div>
                     <p className="text-sm font-medium text-muted-foreground">Employment Type</p>

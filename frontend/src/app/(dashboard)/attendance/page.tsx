@@ -68,6 +68,7 @@ export default function AttendancePage() {
       setTodayAttendance(todayData)
       setHistory(Array.isArray(historyData) ? historyData : [])
     } catch (error) {
+      toast.error('Failed to load attendance data')
       console.error('Failed to fetch attendance:', error)
     } finally {
       setIsLoading(false)

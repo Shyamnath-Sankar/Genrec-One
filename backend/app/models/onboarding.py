@@ -1,4 +1,5 @@
 from sqlalchemy import Column, String, Boolean, Date, DateTime, Integer, ForeignKey, Text
+from sqlalchemy.orm import relationship
 from app.models.types import JSONB
 from app.models.base import Base, TimestampMixin
 import uuid
@@ -20,6 +21,9 @@ class OnboardingChecklist(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, nullable=False)
 
+    # Relationships
+    tasks = relationship("OnboardingTask", back_populates="checklist")
+
 
 class OnboardingTask(Base):
     __tablename__ = "onboarding_tasks"
@@ -34,6 +38,9 @@ class OnboardingTask(Base):
     due_date = Column(Date, nullable=False)
     created_at = Column(DateTime, nullable=False)
 
+    # Relationships
+    checklist = relationship("OnboardingChecklist", back_populates="tasks")
+
 
 class OffboardingChecklist(Base):
     __tablename__ = "offboarding_checklists"
@@ -45,6 +52,9 @@ class OffboardingChecklist(Base):
     assigned_to = Column(String(100), nullable=False)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, nullable=False)
+
+    # Relationships
+    tasks = relationship("OffboardingTask", back_populates="checklist")
 
 
 class OffboardingTask(Base):
@@ -58,6 +68,9 @@ class OffboardingTask(Base):
     completed_at = Column(DateTime, nullable=True)
     notes = Column(Text, nullable=True)
     created_at = Column(DateTime, nullable=False)
+
+    # Relationships
+    checklist = relationship("OffboardingChecklist", back_populates="tasks")
 
 
 class ExitInterview(Base):

@@ -334,3 +334,165 @@ async def request_regularization(
         message="Regularization request submitted",
         data={"id": regularization.id},
     )
+
+
+@router.get("/regularization/list", response_model=PaginatedResponse)
+async def get_regularization_requests(
+    page: int = Query(1, ge=1),
+    limit: int = Query(10, ge=1, le=100),
+    status: Optional[str] = None,
+    current_employee: Employee = Depends(get_current_employee),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get current employee's regularization requests"""
+    query = (
+        select(AttendanceRegularization)
+        .where(AttendanceRegularization.employee_id == current_employee.id)
+    )
+
+    if status:
+        query = query.where(AttendanceRegularization.status == status)
+
+    # Count
+    count_query = select(func.count()).select_from(query.subquery())
+    total_result = await db.execute(count_query)
+    total = total_result.scalar() or 0
+
+    # Paginate
+    query = query.order_by(AttendanceRegularization.created_at.desc())
+    query = query.offset((page - 1) * limit).limit(limit)
+
+    result = await db.execute(query)
+    requests = result.scalars().all()
+
+    data = [
+        {
+            "id": r.id,
+            "date": r.date.isoformat(),
+            "check_in_time": r.check_in_time.isoformat() if r.check_in_time else None,
+            "check_out_time": r.check_out_time.isoformat() if r.check_out_time else None,
+            "reason": r.reason,
+            "status": r.status.value if hasattr(r.status, 'value') else r.status,
+            "approver_remarks": r.approver_remarks,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+        }
+        for r in requests
+    ]
+
+    return PaginatedResponse(
+        data=data,
+        total=total,
+        page=page,
+        limit=limit,
+        total_pages=(total + limit - 1) // limit,
+    )
+
+
+@router.get("/team", response_model=DataResponse)
+async def get_team_attendance(
+    target_date: Optional[date] = None,
+    current_employee: Employee = Depends(get_current_employee),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get attendance for team members (subordinates)"""
+    if not target_date:
+        target_date = date.today()
+
+    # Get subordinates of current employee
+    subordinates_result = await db.execute(
+        select(Employee)
+        .where(Employee.reporting_manager_id == current_employee.id)
+        .where(Employee.is_active == True)
+    )
+    subordinates = subordinates_result.scalars().all()
+
+    if not subordinates:
+        return DataResponse(data=[])
+
+    subordinate_ids = [s.id for s in subordinates]
+
+    # Get attendance for all subordinates on the target date
+    attendance_result = await db.execute(
+        select(Attendance)
+        .where(Attendance.employee_id.in_(subordinate_ids))
+        .where(Attendance.date == target_date)
+    )
+    attendance_map = {a.employee_id: a for a in attendance_result.scalars().all()}
+
+    # Build team attendance data
+    team_data = []
+    for emp in subordinates:
+        attendance = attendance_map.get(emp.id)
+        team_data.append({
+            "employee_id": emp.id,
+            "employee_name": f"{emp.first_name} {emp.last_name}",
+            "employee_code": emp.employee_id,
+            "department": emp.department.name if emp.department else None,
+            "designation": emp.designation.title if emp.designation else None,
+            "date": target_date.isoformat(),
+            "status": attendance.status.value if attendance else "NOT_MARKED",
+            "check_in_time": attendance.check_in_time.isoformat() if attendance and attendance.check_in_time else None,
+            "check_out_time": attendance.check_out_time.isoformat() if attendance and attendance.check_out_time else None,
+            "total_hours": float(attendance.total_hours) if attendance and attendance.total_hours else None,
+        })
+
+    return DataResponse(data=team_data)
+
+
+@router.get("/team/summary", response_model=DataResponse)
+async def get_team_attendance_summary(
+    month: int = Query(..., ge=1, le=12),
+    year: int = Query(..., ge=2020),
+    current_employee: Employee = Depends(get_current_employee),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get monthly attendance summary for team members"""
+    from calendar import monthrange
+
+    start_date = date(year, month, 1)
+    _, last_day = monthrange(year, month)
+    end_date = date(year, month, last_day)
+
+    # Get subordinates
+    subordinates_result = await db.execute(
+        select(Employee)
+        .where(Employee.reporting_manager_id == current_employee.id)
+        .where(Employee.is_active == True)
+    )
+    subordinates = subordinates_result.scalars().all()
+
+    if not subordinates:
+        return DataResponse(data=[])
+
+    summary = []
+    for emp in subordinates:
+        # Get attendance records for the month
+        result = await db.execute(
+            select(Attendance)
+            .where(Attendance.employee_id == emp.id)
+            .where(Attendance.date >= start_date)
+            .where(Attendance.date <= end_date)
+        )
+        records = result.scalars().all()
+
+        present_days = sum(1 for r in records if r.status == AttendanceStatus.PRESENT)
+        absent_days = sum(1 for r in records if r.status == AttendanceStatus.ABSENT)
+        leave_days = sum(1 for r in records if r.status == AttendanceStatus.ON_LEAVE)
+        late_days = sum(1 for r in records if r.status == AttendanceStatus.LATE)
+
+        hours_list = [float(r.total_hours) for r in records if r.total_hours]
+        avg_hours = sum(hours_list) / len(hours_list) if hours_list else 0
+
+        summary.append({
+            "employee_id": emp.id,
+            "employee_name": f"{emp.first_name} {emp.last_name}",
+            "employee_code": emp.employee_id,
+            "present_days": present_days,
+            "absent_days": absent_days,
+            "leave_days": leave_days,
+            "late_days": late_days,
+            "avg_hours": round(avg_hours, 2),
+            "total_working_days": last_day,
+        })
+
+    return DataResponse(data=summary)

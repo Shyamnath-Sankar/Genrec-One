@@ -26,6 +26,7 @@ import {
 } from '@/components/ui/select'
 import { Download, FileText, DollarSign, TrendingUp, TrendingDown } from 'lucide-react'
 import { format } from 'date-fns'
+import { toast } from 'sonner'
 
 type Payslip = {
   id: string
@@ -63,6 +64,7 @@ export default function PayrollPage() {
       const result = await apiClient.get<Payslip[]>(`/payroll/payslips?year=${selectedYear}`)
       setPayslips(Array.isArray(result) ? result : [])
     } catch (error) {
+      toast.error('Failed to load payroll data')
       console.error('Failed to fetch payslips:', error)
       setPayslips([])
     } finally {

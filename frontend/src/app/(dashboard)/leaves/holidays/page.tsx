@@ -99,6 +99,7 @@ export default function HolidaysPage() {
       const data = await apiClient.get<Holiday[]>(`/leaves/holidays?year=${selectedYear}`)
       setHolidays(Array.isArray(data) ? data : [])
     } catch (error) {
+      toast.error('Failed to load holidays')
       console.error('Failed to fetch holidays:', error)
     } finally {
       setIsLoading(false)

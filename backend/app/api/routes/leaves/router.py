@@ -19,6 +19,7 @@ from app.schemas.attendance import (
     LeaveApplicationResponse,
     LeaveBalanceResponse,
     HolidayCreate,
+    HolidayUpdate,
     HolidayResponse,
 )
 from app.schemas.auth import DataResponse, PaginatedResponse
@@ -338,3 +339,66 @@ async def create_holiday(
         message="Holiday created successfully",
         data={"id": holiday.id},
     )
+
+
+@router.put("/holidays/{holiday_id}", response_model=DataResponse)
+async def update_holiday(
+    holiday_id: str,
+    data: HolidayUpdate,
+    current_employee: Employee = Depends(get_current_employee),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update a holiday"""
+    result = await db.execute(
+        select(Holiday).where(Holiday.id == holiday_id)
+    )
+    holiday = result.scalar_one_or_none()
+
+    if not holiday:
+        raise HTTPException(status_code=404, detail="Holiday not found")
+
+    # Update fields if provided
+    if data.name is not None:
+        holiday.name = data.name
+    if data.date is not None:
+        # Check for duplicate date (excluding current holiday)
+        existing = await db.execute(
+            select(Holiday)
+            .where(Holiday.date == data.date)
+            .where(Holiday.id != holiday_id)
+        )
+        if existing.scalar_one_or_none():
+            raise HTTPException(status_code=400, detail="A holiday already exists on this date")
+        holiday.date = data.date
+    if data.type is not None:
+        from app.models.leave import HolidayType
+        holiday.type = HolidayType(data.type)
+    if data.is_optional is not None:
+        holiday.is_optional = data.is_optional
+    if data.description is not None:
+        holiday.description = data.description
+
+    await db.commit()
+
+    return DataResponse(message="Holiday updated successfully")
+
+
+@router.delete("/holidays/{holiday_id}", response_model=DataResponse)
+async def delete_holiday(
+    holiday_id: str,
+    current_employee: Employee = Depends(get_current_employee),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a holiday"""
+    result = await db.execute(
+        select(Holiday).where(Holiday.id == holiday_id)
+    )
+    holiday = result.scalar_one_or_none()
+
+    if not holiday:
+        raise HTTPException(status_code=404, detail="Holiday not found")
+
+    await db.delete(holiday)
+    await db.commit()
+
+    return DataResponse(message="Holiday deleted successfully")

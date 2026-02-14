@@ -28,6 +28,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Plus, Search, Users, UserCheck, UserX, Building2, Eye } from 'lucide-react'
+import { toast } from 'sonner'
 
 type Employee = {
   id: string
@@ -90,6 +91,7 @@ export default function EmployeesPage() {
       setTotal(empResult.pagination.total || 0)
       setDepartments(Array.isArray(deptData) ? deptData : [])
     } catch (error) {
+      toast.error('Failed to load employee data')
       console.error('Failed to fetch employees:', error)
     } finally {
       setIsLoading(false)

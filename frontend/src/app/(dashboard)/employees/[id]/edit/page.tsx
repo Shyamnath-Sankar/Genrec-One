@@ -104,13 +104,10 @@ export default function EditEmployeePage() {
   const fetchData = async () => {
     try {
       setIsLoading(true)
-      const [employee, depts, desigs, mgrs] = await Promise.all([
-        apiClient.get<any>(`/employees/${employeeId}`),
-        apiClient.get<Department[]>('/employees/departments'),
-        apiClient.get<Designation[]>('/employees/designations'),
-        apiClient.get<{ data: Manager[] }>('/employees?limit=100&status=ACTIVE'),
-      ])
-
+      
+      // First fetch the employee - this is required
+      const employee = await apiClient.get<any>(`/employees/${employeeId}`)
+      
       setFormData({
         firstName: employee.firstName || '',
         lastName: employee.lastName || '',
@@ -142,9 +139,37 @@ export default function EditEmployeePage() {
         aadharNumber: employee.aadharNumber || '',
       })
 
-      setDepartments(Array.isArray(depts) ? depts : [])
-      setDesignations(Array.isArray(desigs) ? desigs : [])
-      setManagers(mgrs?.data && Array.isArray(mgrs.data) ? mgrs.data.filter(m => m.id !== employeeId) : [])
+      // Fetch dropdown data with individual error handling
+      const [deptsResult, desigsResult, mgrsResult] = await Promise.allSettled([
+        apiClient.get<Department[] | { data: Department[] }>('/employees/departments'),
+        apiClient.get<Designation[] | { data: Designation[] }>('/employees/designations'),
+        apiClient.get<Manager[] | { data: Manager[] }>('/employees?limit=100&status=ACTIVE'),
+      ])
+
+      // Process departments
+      if (deptsResult.status === 'fulfilled') {
+        const depts = deptsResult.value
+        setDepartments(Array.isArray(depts) ? depts : (depts as { data: Department[] })?.data || [])
+      } else {
+        console.error('Failed to fetch departments:', deptsResult.reason)
+      }
+
+      // Process designations
+      if (desigsResult.status === 'fulfilled') {
+        const desigs = desigsResult.value
+        setDesignations(Array.isArray(desigs) ? desigs : (desigs as { data: Designation[] })?.data || [])
+      } else {
+        console.error('Failed to fetch designations:', desigsResult.reason)
+      }
+
+      // Process managers
+      if (mgrsResult.status === 'fulfilled') {
+        const mgrs = mgrsResult.value
+        const mgrList = Array.isArray(mgrs) ? mgrs : (mgrs as { data: Manager[] })?.data || []
+        setManagers(mgrList.filter((m: Manager) => m.id !== employeeId))
+      } else {
+        console.error('Failed to fetch managers:', mgrsResult.reason)
+      }
     } catch (error) {
       console.error('Failed to fetch employee:', error)
       toast.error('Failed to load employee data')

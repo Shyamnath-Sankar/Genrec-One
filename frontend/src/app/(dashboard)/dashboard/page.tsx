@@ -18,6 +18,7 @@ import {
   AlertCircle,
   FileText,
 } from 'lucide-react'
+import { toast } from 'sonner'
 
 type DashboardStats = {
   total_employees: number
@@ -45,6 +46,7 @@ export default function DashboardPage() {
           const result = await apiClient.get<{ data: DashboardStats }>('/reports/dashboard')
           setStats((result as { data: DashboardStats }).data)
         } catch (error) {
+          toast.error('Failed to load dashboard data')
           console.error('Failed to fetch stats:', error)
         } finally {
           setIsLoading(false)
